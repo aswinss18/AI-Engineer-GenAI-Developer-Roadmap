@@ -1,0 +1,83 @@
+# ------------------------------
+# Python
+# ------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Compiled extensions
+*.so
+*.pyd
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ------------------------------
+# Virtual Environments
+# ------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# ------------------------------
+# UV
+# ------------------------------
+.uv/
+.python-version
+
+# Keep lock file (IMPORTANT)
+# uv.lock  <-- DO NOT IGNORE (commented intentionally)
+
+# ------------------------------
+# Environment variables
+# ------------------------------
+.env
+.env.*
+!.env.example
+
+# ------------------------------
+# IDE
+# ------------------------------
+.vscode/
+.idea/
+
+# ------------------------------
+# OS
+# ------------------------------
+.DS_Store
+Thumbs.db
+
+# ------------------------------
+# Logs
+# ------------------------------
+*.log
+
+# ------------------------------
+# Testing / coverage
+# ------------------------------
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ------------------------------
+# Mypy / Ruff / Linters
+# ------------------------------
+.mypy_cache/
+.ruff_cache/
+
+# ------------------------------
+# Docker
+# ------------------------------
+*.pid
+*.seed
+
+# ------------------------------
+# Node (if Next.js frontend later)
+# ------------------------------
+node_modules/
+.next/
+out/
