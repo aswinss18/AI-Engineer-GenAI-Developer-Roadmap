@@ -23,4 +23,4 @@ async def stream_chat(message: str):
             if chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
-    return StreamingResponse(generate(), media_type="text/plain")
+    return StreamingResponse(generate(), media_type="text/event-stream")
