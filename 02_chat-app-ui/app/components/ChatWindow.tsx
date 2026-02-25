@@ -66,37 +66,68 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
 
     /* ── Streamed: token-by-token append ── */
     async function handleStream(text: string) {
+        // Abort previous stream if any
+        try {
+            // store abort controller on window to survive re-renders
+            (window as any).__chat_stream_abort?.abort?.();
+        } catch {}
+        const controller = new AbortController();
+        (window as any).__chat_stream_abort = controller;
+
         const res = await fetch(`/api/stream?message=${encodeURIComponent(text)}`, {
             method: "POST",
+            signal: controller.signal,
         });
         const reader = res.body?.getReader();
         if (!reader) return;
 
         const decoder = new TextDecoder();
-        let aiMsg: Message = { role: "ai", content: "", streaming: true };
-        setMessages((prev) => [...prev, aiMsg]);
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
+        // Add placeholder AI message and keep a small local buffer to reduce re-renders
+        setMessages((prev) => [...prev, { role: "ai", content: "", streaming: true }]);
+
+        let buffer = "";
+        let lastFlush = performance.now();
+
+        const flush = () => {
+            if (!buffer) return;
             setMessages((prev) => {
                 const updated = [...prev];
                 const last = { ...updated[updated.length - 1] };
-                last.content += chunk;
+                last.content += buffer;
                 updated[updated.length - 1] = last;
                 return updated;
             });
-        }
+            buffer = "";
+            lastFlush = performance.now();
+        };
 
-        setMessages((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-                ...updated[updated.length - 1],
-                streaming: false,
-            };
-            return updated;
-        });
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+
+                // Flush at ~50ms intervals to batch updates for large responses
+                if (performance.now() - lastFlush > 50) flush();
+            }
+        } catch (err) {
+            // If aborted, continue to finalize
+        } finally {
+            // flush remainder and mark finished
+            flush();
+            setMessages((prev) => {
+                const updated = [...prev];
+                const last = { ...updated[updated.length - 1] };
+                last.streaming = false;
+                updated[updated.length - 1] = last;
+                return updated;
+            });
+            try {
+                reader.releaseLock?.();
+            } catch {}
+        }
     }
 
     /* ── Structured: stream + parse JSON on complete ── */
@@ -110,15 +141,13 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
 
         const decoder = new TextDecoder();
         let raw = "";
+        let sseBuf = "";
 
         const aiMsg: Message = { role: "ai", content: "", streaming: true };
         setMessages((prev) => [...prev, aiMsg]);
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            raw += chunk;
+        const flushChunk = (dataChunk: string) => {
+            raw += dataChunk;
             setMessages((prev) => {
                 const updated = [...prev];
                 const last = { ...updated[updated.length - 1] };
@@ -126,29 +155,88 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                 updated[updated.length - 1] = last;
                 return updated;
             });
+        };
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            sseBuf += chunk;
+
+            // split into complete SSE events (delimited by double newline)
+            const parts = sseBuf.split(/\r?\n\r?\n/);
+            sseBuf = parts.pop() || ""; // remainder
+
+            for (const part of parts) {
+                // collect 'data:' lines
+                const lines = part.split(/\r?\n/);
+                const dataLines: string[] = [];
+                for (const line of lines) {
+                    if (line.startsWith("data:")) {
+                        dataLines.push(line.slice(5).trim());
+                    }
+                }
+                if (dataLines.length === 0) continue;
+                const data = dataLines.join("\n");
+                flushChunk(data);
+
+                // try parse JSON progressively; if valid JSON found, set structured and finish
+                try {
+                    const parsed = JSON.parse(raw);
+                    const structured = {
+                        summary: parsed.summary ?? raw,
+                        confidence: parsed.confidence ?? "—",
+                    };
+                    setMessages((prev) => {
+                        const updated = [...prev];
+                        updated[updated.length - 1] = {
+                            ...updated[updated.length - 1],
+                            streaming: false,
+                            structured,
+                        };
+                        return updated;
+                    });
+                    return;
+                } catch {
+                    // not complete JSON yet; continue streaming
+                }
+            }
         }
 
-        // Try to parse the finished stream as JSON
-        let structured: Message["structured"] | undefined;
+        // final attempt after stream ends
+        if (sseBuf) {
+            // process leftover buffer as a single event
+            const lines = sseBuf.split(/\r?\n/);
+            const dataLines: string[] = [];
+            for (const line of lines) if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+            if (dataLines.length) flushChunk(dataLines.join("\n"));
+        }
+
         try {
             const parsed = JSON.parse(raw);
-            structured = {
+            const structured = {
                 summary: parsed.summary ?? raw,
                 confidence: parsed.confidence ?? "—",
             };
+            setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    streaming: false,
+                    structured,
+                };
+                return updated;
+            });
         } catch {
-            // If the AI didn't return valid JSON, show raw
+            setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    streaming: false,
+                };
+                return updated;
+            });
         }
-
-        setMessages((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-                ...updated[updated.length - 1],
-                streaming: false,
-                structured,
-            };
-            return updated;
-        });
     }
 
     const { label, icon, color } = LABELS[mode];
