@@ -15,21 +15,27 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 
+@router.post("/structured_stream")
 async def structured_stream_response(prompt: str):
-    stream = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a precise AI. Always respond in valid JSON with keys: summary, confidence."},
-            {"role": "user", "content": prompt}
-        ],
-        stream=True
+    stream = client.responses.stream(
+        model="gpt-4.1",
+        input=prompt,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "summary_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string"},
+                        "confidence": {"type": "number"}
+                    },
+                    "required": ["summary", "confidence"]
+                }
+            }
+        }
     )
 
-    for chunk in stream:
-        if chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
-            await asyncio.sleep(0.01)
-
-@router.post("/structured_stream")
-async def stream(prompt: str):
-    return StreamingResponse(structured_stream_response(prompt), media_type="text/plain")
+    async for event in stream:
+        if event.type == "response.output_text.delta":
+            yield event.delta
