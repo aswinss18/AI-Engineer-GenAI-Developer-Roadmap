@@ -7,12 +7,12 @@ import os
 import json
 import asyncio
 
+client = OpenAI()
 
 router = APIRouter()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-app = FastAPI()
-client = OpenAI()
+
 
 
 async def structured_stream_response(prompt: str):
@@ -30,6 +30,6 @@ async def structured_stream_response(prompt: str):
             yield chunk.choices[0].delta.content
             await asyncio.sleep(0.01)
 
-@app.post("/structured_stream")
+@router.post("/structured_stream")
 async def stream(prompt: str):
     return StreamingResponse(stream_response(prompt), media_type="text/plain")
