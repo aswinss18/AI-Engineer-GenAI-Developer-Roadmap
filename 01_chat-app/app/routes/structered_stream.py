@@ -32,4 +32,4 @@ async def structured_stream_response(prompt: str):
 
 @router.post("/structured_stream")
 async def stream(prompt: str):
-    return StreamingResponse(stream_response(prompt), media_type="text/plain")
+    return StreamingResponse(structured_stream_response(prompt), media_type="text/plain")
