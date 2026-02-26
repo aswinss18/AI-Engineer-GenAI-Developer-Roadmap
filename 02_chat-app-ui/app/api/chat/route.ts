@@ -3,8 +3,11 @@
  */
 
 export async function POST(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const message = searchParams.get("message");
+  // expect JSON body: { message, temperature?, mode? }
+  const body = await request.json();
+  const message = body.message as string;
+  const temperature = body.temperature ?? 0.3;
+  const mode = body.mode ?? "default";
 
   if (!message) {
     return new Response(JSON.stringify({ error: "Missing 'message' parameter" }), {
@@ -14,8 +17,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    // forward parameters as query params so backend routes (fastapi) pick them up
     const backendUrl = `http://localhost:8000/chat?message=${encodeURIComponent(
       message
+    )}&temperature=${encodeURIComponent(String(temperature))}&mode=${encodeURIComponent(
+      mode
     )}`;
 
     const response = await fetch(backendUrl, {

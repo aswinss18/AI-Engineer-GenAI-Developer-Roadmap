@@ -1,7 +1,7 @@
 from fastapi.responses import StreamingResponse
 from fastapi import APIRouter
 from openai import OpenAI
-from controllers.prompt import build_system_prompt
+from app.controllers.prompt import build_system_prompt
 import os
 
 router = APIRouter()

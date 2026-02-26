@@ -3,8 +3,9 @@
  */
 
 export async function POST(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const prompt = searchParams.get("prompt");
+  // read JSON body for prompt (and optional temperature/mode if you decide to support them)
+  const body = await request.json();
+  const prompt = body.prompt as string;
 
   if (!prompt) {
     return new Response("Missing 'prompt' parameter", { status: 400 });

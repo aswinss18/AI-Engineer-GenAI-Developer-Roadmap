@@ -3,8 +3,11 @@
  */
 
 export async function POST(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const message = searchParams.get("message");
+  // read JSON body for message, temperature and mode
+  const body = await request.json();
+  const message = body.message as string;
+  const temperature = body.temperature ?? 0.2;
+  const mode = body.mode ?? "default";
 
   if (!message) {
     return new Response("Missing 'message' parameter", { status: 400 });
@@ -13,6 +16,8 @@ export async function POST(request: Request) {
   try {
     const backendUrl = `http://localhost:8000/stream?message=${encodeURIComponent(
       message
+    )}&temperature=${encodeURIComponent(String(temperature))}&mode=${encodeURIComponent(
+      mode
     )}`;
 
     const response = await fetch(backendUrl, {
