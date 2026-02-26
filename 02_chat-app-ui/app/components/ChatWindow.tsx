@@ -29,6 +29,7 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
     const [loading, setLoading] = useState(false);
     const [temperature, setTemperature] = useState(0.2);
     const [promptMode, setPromptMode] = useState<"default" | "summary" | "json">("default");
+    const [deterministic, setDeterministic] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -59,7 +60,7 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
 
     /* ── Normal: wait for full JSON response ── */
     async function handleNormal(text: string) {
-        const payload = { message: text, temperature, mode: promptMode };
+        const payload = { message: text, temperature: deterministic ? 0 : temperature, mode: promptMode, deterministic };
         const res = await fetch(`/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -79,7 +80,7 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
         const controller = new AbortController();
         (window as any).__chat_stream_abort = controller;
 
-        const payload = { message: text, temperature, mode: promptMode };
+        const payload = { message: text, temperature: deterministic ? 0 : temperature, mode: promptMode, deterministic };
         const res = await fetch(`/api/stream`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -140,10 +141,12 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
 
     /* ── Structured: stream + parse JSON on complete ── */
     async function handleStructured(text: string) {
-        const res = await fetch(
-            `/api/structured_stream?prompt=${encodeURIComponent(text)}`,
-            { method: "POST" }
-        );
+        const payload = { prompt: text, deterministic };
+        const res = await fetch(`/api/structured_stream`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
         const reader = res.body?.getReader();
         if (!reader) return;
 
@@ -346,6 +349,7 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                         step="0.1"
                         value={temperature}
                         onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        disabled={deterministic}
                     />
                 </label>
                 <label style={{ fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
@@ -355,6 +359,14 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                         <option value="summary">Summary</option>
                         <option value="json">JSON</option>
                     </select>
+                </label>
+                <label style={{ fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                    <input
+                        type="checkbox"
+                        checked={deterministic}
+                        onChange={(e) => setDeterministic(e.target.checked)}
+                    />
+                    Deterministic
                 </label>
             </div>
 

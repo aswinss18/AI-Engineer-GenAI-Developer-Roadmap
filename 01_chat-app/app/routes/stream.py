@@ -8,7 +8,15 @@ router = APIRouter()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @router.post("/stream")
-async def stream_chat(message: str,temperature: float = 0.2,mode:str = "default"):
+async def stream_chat(
+    message: str,
+    temperature: float = 0.2,
+    mode: str = "default",
+    deterministic: bool = False,
+):
+    # apply deterministic rule early
+    if deterministic:
+        temperature = 0.0
 
     def generate():
         stream = client.chat.completions.create(
