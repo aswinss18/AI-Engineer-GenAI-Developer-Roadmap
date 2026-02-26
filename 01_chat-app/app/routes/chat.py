@@ -7,14 +7,23 @@ router = APIRouter()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @router.post("/chat")
-async def chat(message: str, temperature: float = 0.3, mode: str = "default"):
+async def chat(
+    message: str,
+    temperature: float = 0.3,
+    mode: str = "default",
+    deterministic: bool = False,
+):
+    # override temperature if deterministic
+    if deterministic:
+        temperature = 0.0
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         temperature=temperature,
         messages=[
             {"role": "system", "content": build_system_prompt(mode)},
-            {"role": "user", "content": message}
-        ]
+            {"role": "user", "content": message},
+        ],
     )
 
     return {"response": response.choices[0].message.content}

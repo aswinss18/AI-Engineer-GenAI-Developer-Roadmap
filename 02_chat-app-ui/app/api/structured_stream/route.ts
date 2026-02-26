@@ -3,9 +3,10 @@
  */
 
 export async function POST(request: Request) {
-  // read JSON body for prompt (and optional temperature/mode if you decide to support them)
+  // read JSON body for prompt (and possible deterministic flag)
   const body = await request.json();
   const prompt = body.prompt as string;
+  const deterministic = body.deterministic ?? false;
 
   if (!prompt) {
     return new Response("Missing 'prompt' parameter", { status: 400 });
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
   try {
     const backendUrl = `http://localhost:8000/structured_stream?prompt=${encodeURIComponent(
       prompt
-    )}`;
+    )}&deterministic=${encodeURIComponent(String(deterministic))}`;
 
     const response = await fetch(backendUrl, {
       method: "POST",

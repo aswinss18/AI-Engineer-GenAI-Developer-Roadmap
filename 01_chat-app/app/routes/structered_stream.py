@@ -10,8 +10,14 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 @router.post("/structured_stream")
-async def structured_stream_response(prompt: str):
+async def structured_stream_response(prompt: str, deterministic: bool = False):
+    # deterministic flag currently only impacts the fallback path where we
+    # call chat.completions; in theory the responses.stream call could also
+    # accept a temperature parameter but the SDK examples omit it.
+    temp_override = 0.0 if deterministic else None
+
     try:
+        # note: if temperature is supported, it could be passed here
         stream = client.responses.stream(
             model="gpt-4.1",
             input=prompt,
@@ -105,7 +111,7 @@ async def structured_stream_response(prompt: str):
                     try:
                         resp = client.chat.completions.create(
                             model="gpt-4o-mini",
-                            temperature=0.3,
+                            temperature=0.0 if deterministic else 0.3,
                             messages=[
                                 {"role": "system", "content": "You are concise."},
                                 {"role": "user", "content": prompt},

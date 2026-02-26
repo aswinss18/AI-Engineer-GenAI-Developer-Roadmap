@@ -8,6 +8,7 @@ export async function POST(request: Request) {
   const message = body.message as string;
   const temperature = body.temperature ?? 0.2;
   const mode = body.mode ?? "default";
+  const deterministic = body.deterministic ?? false;
 
   if (!message) {
     return new Response("Missing 'message' parameter", { status: 400 });
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
       message
     )}&temperature=${encodeURIComponent(String(temperature))}&mode=${encodeURIComponent(
       mode
-    )}`;
+    )}&deterministic=${encodeURIComponent(String(deterministic))}`;
 
     const response = await fetch(backendUrl, {
       method: "POST",
