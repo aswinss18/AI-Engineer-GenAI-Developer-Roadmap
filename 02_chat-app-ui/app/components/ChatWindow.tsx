@@ -27,6 +27,8 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [temperature, setTemperature] = useState(0.2);
+    const [promptMode, setPromptMode] = useState<"default" | "summary" | "json">("default");
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -57,8 +59,11 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
 
     /* ── Normal: wait for full JSON response ── */
     async function handleNormal(text: string) {
-        const res = await fetch(`/api/chat?message=${encodeURIComponent(text)}`, {
+        const payload = { message: text, temperature, mode: promptMode };
+        const res = await fetch(`/api/chat`, {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
         });
         const data = await res.json();
         setMessages((prev) => [...prev, { role: "ai", content: data.response }]);
@@ -74,8 +79,11 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
         const controller = new AbortController();
         (window as any).__chat_stream_abort = controller;
 
-        const res = await fetch(`/api/stream?message=${encodeURIComponent(text)}`, {
+        const payload = { message: text, temperature, mode: promptMode };
+        const res = await fetch(`/api/stream`, {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
             signal: controller.signal,
         });
         const reader = res.body?.getReader();
@@ -325,6 +333,29 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                     />
                     {loading ? "Thinking…" : "Ready"}
                 </div>
+            </div>
+
+            {/* Control bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem", margin: "0.5rem 0" }}>
+                <label style={{ fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                    Temp: {temperature.toFixed(1)}
+                    <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={temperature}
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                    />
+                </label>
+                <label style={{ fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                    Prompt mode:
+                    <select value={promptMode} onChange={(e) => setPromptMode(e.target.value as any)}>
+                        <option value="default">Default</option>
+                        <option value="summary">Summary</option>
+                        <option value="json">JSON</option>
+                    </select>
+                </label>
             </div>
 
             {/* Message thread */}
