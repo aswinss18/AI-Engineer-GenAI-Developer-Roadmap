@@ -1,0 +1,14 @@
+[project]
+name = "03-mini-search-engine-faiss"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dotenv>=0.9.9",
+    "embeddings>=0.0.8",
+    "faiss-cpu>=1.13.2",
+    "fastapi>=0.133.1",
+    "numpy>=2.4.2",
+    "uvicorn>=0.41.0",
+]
