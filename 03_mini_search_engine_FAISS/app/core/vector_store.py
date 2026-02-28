@@ -1,6 +1,6 @@
 import faiss
 import numpy as np
-from embeddings import get_embedding, normalize
+from app.core.embeddings import get_embedding, normalize
 
 documents = [
     "I love programming in Python",
