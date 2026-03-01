@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.controller.search import search_query
+from app.controller   .search import search_query
 
 router = APIRouter()
 

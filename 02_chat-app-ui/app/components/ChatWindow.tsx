@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 
-type Mode = "normal" | "stream" | "structured";
+type Mode = "normal" | "stream" | "structured" | "search";
 
 interface Message {
     role: "user" | "ai";
@@ -16,6 +16,7 @@ const LABELS: Record<Mode, { label: string; icon: string; color: string }> = {
     normal: { label: "Normal Chat", icon: "💬", color: "#4ade80" },
     stream: { label: "Streamed Chat", icon: "⚡", color: "#facc15" },
     structured: { label: "Structured Stream", icon: "🧠", color: "#818cf8" },
+    search: { label: "FAISS Search", icon: "🔍", color: "#22c55e" },
 };
 
 interface ChatWindowProps {
@@ -50,6 +51,8 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                 await handleNormal(text);
             } else if (mode === "stream") {
                 await handleStream(text);
+            } else if (mode === "search") {
+                await handleSearch(text);
             } else {
                 await handleStructured(text);
             }
@@ -137,6 +140,29 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                 reader.releaseLock?.();
             } catch {}
         }
+    }
+
+    /* ── Search: send query to faiss backend and render results ── */
+    async function handleSearch(text: string) {
+        // record the user message then ask backend
+        const payload = { query: text };
+        const res = await fetch(`/api/search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            setMessages((prev) => [...prev, { role: "ai", content: "Error fetching search results" }]);
+            return;
+        }
+        const data = await res.json();
+        // format results into a string list
+        const out = data.results
+            ? data.results
+                  .map((r: any, i: number) => `${i + 1}. ${r.text} (score: ${r.score})`)
+                  .join("\n")
+            : "(no results)";
+        setMessages((prev) => [...prev, { role: "ai", content: out }]);
     }
 
     /* ── Structured: stream + parse JSON on complete ── */
@@ -459,7 +485,7 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                                     </div>
                                 ) : (
                                     <>
-                                        {msg.content}
+                                        <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
                                         {msg.streaming && (
                                             <span
                                                 style={{
@@ -506,7 +532,9 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                             sendMessage();
                         }
                     }}
-                    placeholder={`Message in ${label} mode… (Enter to send, Shift+Enter for newline)`}
+                    placeholder={`${
+    mode === "search" ? "Search query…" : `Message in ${label} mode… (Enter to send, Shift+Enter for newline)`
+}`}
                     disabled={loading}
                     rows={1}
                     style={{
