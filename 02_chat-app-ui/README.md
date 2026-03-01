@@ -20,6 +20,20 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+
+## FAISS Search Mode
+
+This UI also includes a **FAISS Search** option on the home screen.  When you select it you can enter a query and the frontend will
+proxy the request to a vector‑search backend running separately (default `http://localhost:8001`).
+
+The backend URL can be overridden with the `SEARCH_BACKEND_URL` environment variable in
+`.env.local` or your deployment environment.  Make sure the FAISS server (found under
+`03_mini_search_engine_FAISS`) is running (e.g. `uvicorn app.main:app --reload --port 8001`) before
+clicking the Search mode.
+
+The results returned from the backend are displayed as a numbered list inside the chat
+window so you can quickly inspect the raw payload without having to switch tools.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

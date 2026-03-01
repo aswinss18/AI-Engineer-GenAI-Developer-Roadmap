@@ -1,6 +1,6 @@
 "use client";
 
-type Mode = "normal" | "stream" | "structured";
+type Mode = "normal" | "stream" | "structured" | "search";
 
 interface ModeSelectorProps {
     onSelect: (mode: Mode) => void;
@@ -40,6 +40,15 @@ const modes: {
                 "Streams the response live, but always replies in JSON with a summary and confidence score.",
             tag: "JSON output",
             tagColor: "#818cf8",
+        },
+        {
+            id: "search",
+            icon: "🔍",
+            title: "FAISS Search",
+            description:
+                "Run a query against the FAISS vector store and view the raw results.",
+            tag: "Backend test",
+            tagColor: "#22c55e",
         },
     ];
 
