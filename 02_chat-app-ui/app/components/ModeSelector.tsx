@@ -1,6 +1,6 @@
 "use client";
 
-type Mode = "normal" | "stream" | "structured" | "search";
+type Mode = "normal" | "stream" | "structured" | "search" | "document";
 
 interface ModeSelectorProps {
     onSelect: (mode: Mode) => void;
@@ -49,6 +49,15 @@ const modes: {
                 "Run a query against the FAISS vector store and view the raw results.",
             tag: "Backend test",
             tagColor: "#22c55e",
+        },
+        {
+            id: "document",
+            icon: "📄",
+            title: "Document Chat",
+            description:
+                "Upload a document, then chat with it using semantic search and retrieval.",
+            tag: "RAG",
+            tagColor: "#f97316",
         },
     ];
 

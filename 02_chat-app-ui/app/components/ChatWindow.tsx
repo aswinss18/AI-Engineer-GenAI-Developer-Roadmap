@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 
-type Mode = "normal" | "stream" | "structured" | "search";
+type Mode = "normal" | "stream" | "structured" | "search" | "document";
 
 interface Message {
     role: "user" | "ai";
@@ -17,6 +17,7 @@ const LABELS: Record<Mode, { label: string; icon: string; color: string }> = {
     stream: { label: "Streamed Chat", icon: "⚡", color: "#facc15" },
     structured: { label: "Structured Stream", icon: "🧠", color: "#818cf8" },
     search: { label: "FAISS Search", icon: "🔍", color: "#22c55e" },
+    document: { label: "Document Chat", icon: "📄", color: "#f97316" },
 };
 
 interface ChatWindowProps {
@@ -31,6 +32,8 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
     const [temperature, setTemperature] = useState(0.2);
     const [promptMode, setPromptMode] = useState<"default" | "summary" | "json">("default");
     const [deterministic, setDeterministic] = useState(false);
+    const [documentUploaded, setDocumentUploaded] = useState(false);
+    const [uploadingDoc, setUploadingDoc] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -53,6 +56,8 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                 await handleStream(text);
             } else if (mode === "search") {
                 await handleSearch(text);
+            } else if (mode === "document") {
+                await handleDocumentChat(text);
             } else {
                 await handleStructured(text);
             }
@@ -164,6 +169,59 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
             : "(no results)";
         setMessages((prev) => [...prev, { role: "ai", content: out }]);
     }
+
+    /* ── Document Chat: retrieve chunks and format response ── */
+    async function handleDocumentChat(text: string) {
+        const res = await fetch('http://localhost:8000/retrieve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `query=${encodeURIComponent(text)}&k=3`,
+        });
+        
+        if (!res.ok) {
+            setMessages((prev) => [...prev, { role: "ai", content: "Error retrieving from document" }]);
+            return;
+        }
+        
+        const data = await res.json();
+        const results = data.results || [];
+        
+        if (results.length === 0) {
+            setMessages((prev) => [...prev, { role: "ai", content: "No relevant information found in the document." }]);
+            return;
+        }
+        
+        const response = results
+            .map((r: any, i: number) => `📌 Chunk ${i + 1} (score: ${r.score})\n${r.chunk}`)
+            .join('\n\n---\n\n');
+        
+        setMessages((prev) => [...prev, { role: "ai", content: response }]);
+    }
+
+    /* ── Upload Document ── */
+    const handleDocumentUpload = async (text: string) => {
+        if (!text.trim()) return;
+        
+        setUploadingDoc(true);
+        try {
+            const res = await fetch('http://localhost:8000/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `text=${encodeURIComponent(text)}`,
+            });
+            
+            if (res.ok) {
+                setDocumentUploaded(true);
+                setMessages([{ role: "ai", content: "✅ Document uploaded and indexed successfully! You can now ask questions about it." }]);
+            } else {
+                setMessages([{ role: "ai", content: "❌ Error uploading document. Please try again." }]);
+            }
+        } catch (error) {
+            setMessages([{ role: "ai", content: "❌ Error connecting to server." }]);
+        } finally {
+            setUploadingDoc(false);
+        }
+    };
 
     /* ── Structured: stream + parse JSON on complete ── */
     async function handleStructured(text: string) {
@@ -277,6 +335,173 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
     }
 
     const { label, icon, color } = LABELS[mode];
+
+    // Document upload screen
+    if (mode === "document" && !documentUploaded) {
+        return (
+            <div
+                style={{
+                    minHeight: "100vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    maxWidth: "780px",
+                    margin: "0 auto",
+                    padding: "0 1rem",
+                }}
+            >
+                {/* Header */}
+                <div
+                    className="glass"
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "1rem",
+                        padding: "1rem 1.25rem",
+                        margin: "1rem 0 0",
+                        borderRadius: "var(--radius-lg)",
+                    }}
+                >
+                    <button
+                        onClick={onBack}
+                        style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "var(--muted)",
+                            cursor: "pointer",
+                            fontSize: "1.1rem",
+                            padding: "0.25rem 0.6rem",
+                            borderRadius: "8px",
+                            transition: "color 0.15s, background 0.15s",
+                        }}
+                        onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLElement).style.color = "var(--fg)";
+                            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                        }}
+                        onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLElement).style.color = "var(--muted)";
+                            (e.currentTarget as HTMLElement).style.background = "transparent";
+                        }}
+                    >
+                        ← Back
+                    </button>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
+                        <span style={{ fontSize: "1.3rem" }}>{icon}</span>
+                        <span style={{ fontWeight: 700, fontSize: "1rem" }}>{label}</span>
+                        <span
+                            style={{
+                                fontSize: "0.68rem",
+                                padding: "0.15rem 0.55rem",
+                                borderRadius: "9999px",
+                                background: `${color}22`,
+                                color,
+                                border: `1px solid ${color}44`,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.06em",
+                                fontWeight: 600,
+                            }}
+                        >
+                            RAG
+                        </span>
+                    </div>
+                </div>
+
+                {/* Upload Section */}
+                <div
+                    style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "center",
+                        padding: "2rem 0",
+                    }}
+                >
+                    <div
+                        className="glass"
+                        style={{
+                            padding: "2rem",
+                            borderRadius: "var(--radius-lg)",
+                        }}
+                    >
+                        <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem" }}>
+                            📄 Upload Your Document
+                        </h2>
+                        <p style={{ color: "var(--muted)", marginBottom: "1.5rem", lineHeight: 1.6 }}>
+                            Paste your document text below. It will be chunked and indexed using FAISS, 
+                            then you can ask questions and retrieve relevant sections.
+                        </p>
+                        
+                        <textarea
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="Paste your document here..."
+                            disabled={uploadingDoc}
+                            style={{
+                                width: "100%",
+                                minHeight: "300px",
+                                padding: "1rem",
+                                background: "rgba(0,0,0,0.2)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "var(--radius-md)",
+                                color: "var(--fg)",
+                                fontSize: "0.9rem",
+                                fontFamily: "monospace",
+                                resize: "vertical",
+                                marginBottom: "1rem",
+                            }}
+                        />
+                        
+                        <button
+                            onClick={() => {
+                                handleDocumentUpload(input);
+                                setInput("");
+                            }}
+                            disabled={uploadingDoc || !input.trim()}
+                            className="accent-btn"
+                            style={{
+                                width: "100%",
+                                padding: "0.75rem",
+                                fontSize: "1rem",
+                                fontWeight: 600,
+                            }}
+                        >
+                            {uploadingDoc ? "Uploading & Indexing..." : "Upload Document"}
+                        </button>
+
+                        {/* Sample text */}
+                        <details style={{ marginTop: "1.5rem" }}>
+                            <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: "0.9rem" }}>
+                                Show sample document
+                            </summary>
+                            <pre
+                                style={{
+                                    marginTop: "0.75rem",
+                                    padding: "1rem",
+                                    background: "rgba(0,0,0,0.3)",
+                                    borderRadius: "var(--radius-md)",
+                                    fontSize: "0.8rem",
+                                    overflow: "auto",
+                                    maxHeight: "200px",
+                                }}
+                            >
+{`Artificial Intelligence (AI) is transforming the world.
+Machine learning is a subset of AI that enables computers to learn from data.
+
+Natural Language Processing (NLP) allows computers to understand human language.
+Deep learning uses neural networks with multiple layers.
+
+Computer vision enables machines to interpret visual information.
+Reinforcement learning trains agents through rewards and penalties.
+
+AI applications include healthcare, finance, and autonomous vehicles.
+Ethics in AI is becoming increasingly important as technology advances.`}
+                            </pre>
+                        </details>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div

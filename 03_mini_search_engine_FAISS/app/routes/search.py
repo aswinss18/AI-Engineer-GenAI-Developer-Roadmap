@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Form
 from app.controller.search import search_query
 from app.core.document_store import initialize_document, search_chunks
 
@@ -14,14 +14,14 @@ async def search(query: str):
 
 
 @router.post("/upload")
-async def upload(text: str):
+async def upload(text: str = Form(...)):
     """Upload and index a document for retrieval."""
     initialize_document(text)
     return {"message": "Document indexed successfully"}
 
 
 @router.post("/retrieve")
-async def retrieve(query: str, k: int = 3):
+async def retrieve(query: str = Form(...), k: int = Form(3)):
     """Retrieve relevant chunks from indexed document."""
     results = search_chunks(query, k)
     return {"results": results}
