@@ -4,6 +4,7 @@ load_dotenv()  # Must be called before any module that reads env vars is importe
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.search import router as search_router
+from app.core.vector_store import initialize_faiss
 
 
 
@@ -17,3 +18,7 @@ app.add_middleware(
 )
 
 app.include_router(search_router)
+
+@app.on_event("startup")
+async def startup_event():
+    initialize_faiss()
