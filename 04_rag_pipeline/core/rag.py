@@ -1,7 +1,7 @@
 from openai import OpenAI
 import os
-from document_store import search_chunks
-from generate import generate_rag_answer
+from core.document_store import search_chunks
+from core.generate import generate_rag_answer
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 

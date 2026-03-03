@@ -1,7 +1,7 @@
 import faiss
 import numpy as np
-from app.core.embeddings import get_embedding, normalize
-from app.core.chunker import chunk_text
+from core.embeddings import get_embedding, normalize
+from core.chunker import chunk_text
 
 index = None
 chunks_store = []

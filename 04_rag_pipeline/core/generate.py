@@ -1,6 +1,6 @@
 from openai import OpenAI
 from dotenv import load_dotenv
-from .rag import build_rag_prompt
+from core.rag import build_rag_prompt
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
