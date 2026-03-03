@@ -26,7 +26,7 @@ Rules:
 1. Base your answer ONLY on the provided excerpts
 2. If the excerpts contain relevant information, use it to answer
 3. Be specific and cite which parts of the excerpts you're using
-4. If the excerpts don't contain the answer, say so clearly"""
+4. If the excerpts don't contain the answer, say so clearly and exactly this :"You don't given the knowledge macha 🙏 " """
             },
             {
                 "role": "user", 
