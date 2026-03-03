@@ -170,57 +170,65 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
         setMessages((prev) => [...prev, { role: "ai", content: out }]);
     }
 
-    /* ── Document Chat: retrieve chunks and format response ── */
+    /* ── Document Chat: RAG pipeline with answer generation ── */
     async function handleDocumentChat(text: string) {
-        const res = await fetch('http://localhost:8000/retrieve', {
+        const res = await fetch('http://localhost:8000/rag', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `query=${encodeURIComponent(text)}&k=3`,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: text }),
         });
         
         if (!res.ok) {
-            setMessages((prev) => [...prev, { role: "ai", content: "Error retrieving from document" }]);
+            setMessages((prev) => [...prev, { role: "ai", content: "Error: Unable to process your question" }]);
             return;
         }
         
         const data = await res.json();
-        const results = data.results || [];
         
-        if (results.length === 0) {
-            setMessages((prev) => [...prev, { role: "ai", content: "No relevant information found in the document." }]);
-            return;
-        }
-        
-        const response = results
-            .map((r: any, i: number) => `📌 Chunk ${i + 1} (score: ${r.score})\n${r.chunk}`)
-            .join('\n\n---\n\n');
+        // Just show the answer, not the sources
+        const response = data.answer || "No answer generated.";
         
         setMessages((prev) => [...prev, { role: "ai", content: response }]);
     }
 
-    /* ── Upload Document ── */
-    const handleDocumentUpload = async (text: string) => {
-        if (!text.trim()) return;
-        
+    /* ── Upload Document (File or Text) ── */
+    const handleFileUpload = async (file: File) => {
         setUploadingDoc(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        
         try {
             const res = await fetch('http://localhost:8000/upload', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `text=${encodeURIComponent(text)}`,
+                body: formData,
             });
             
             if (res.ok) {
+                const data = await res.json();
                 setDocumentUploaded(true);
-                setMessages([{ role: "ai", content: "✅ Document uploaded and indexed successfully! You can now ask questions about it." }]);
+                setMessages([{ 
+                    role: "ai", 
+                    content: `✅ ${data.filename} uploaded and indexed successfully!\n\nDocument size: ${data.size} characters\n\nYou can now ask questions about the document.` 
+                }]);
             } else {
-                setMessages([{ role: "ai", content: "❌ Error uploading document. Please try again." }]);
+                const error = await res.json();
+                setMessages([{ role: "ai", content: `❌ Error: ${error.detail}` }]);
             }
         } catch (error) {
-            setMessages([{ role: "ai", content: "❌ Error connecting to server." }]);
+            setMessages([{ role: "ai", content: "❌ Error connecting to server. Make sure the backend is running on port 8000." }]);
         } finally {
             setUploadingDoc(false);
         }
+    };
+
+    const handleTextUpload = async (text: string) => {
+        if (!text.trim()) return;
+        
+        setUploadingDoc(true);
+        // Create a text file blob
+        const blob = new Blob([text], { type: 'text/plain' });
+        const file = new File([blob], 'document.txt', { type: 'text/plain' });
+        await handleFileUpload(file);
     };
 
     /* ── Structured: stream + parse JSON on complete ── */
@@ -427,25 +435,90 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                             📄 Upload Your Document
                         </h2>
                         <p style={{ color: "var(--muted)", marginBottom: "1.5rem", lineHeight: 1.6 }}>
-                            Paste your document text below. It will be chunked and indexed using FAISS, 
-                            then you can ask questions and retrieve relevant sections.
+                            Upload a PDF or TXT file, or paste text directly. The document will be chunked, 
+                            embedded, and indexed using FAISS for semantic search and RAG-based Q&A.
                         </p>
                         
+                        {/* File Upload */}
+                        <div style={{ marginBottom: "1.5rem" }}>
+                            <label
+                                style={{
+                                    display: "block",
+                                    width: "100%",
+                                    padding: "2rem",
+                                    background: "rgba(0,0,0,0.2)",
+                                    border: "2px dashed var(--border)",
+                                    borderRadius: "var(--radius-md)",
+                                    textAlign: "center",
+                                    cursor: "pointer",
+                                    transition: "border-color 0.2s, background 0.2s",
+                                }}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    (e.currentTarget as HTMLElement).style.borderColor = color;
+                                    (e.currentTarget as HTMLElement).style.background = `${color}11`;
+                                }}
+                                onDragLeave={(e) => {
+                                    (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                                    (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.2)";
+                                }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                                    (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.2)";
+                                    const file = e.dataTransfer.files[0];
+                                    if (file) handleFileUpload(file);
+                                }}
+                            >
+                                <input
+                                    type="file"
+                                    accept=".txt,.pdf"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleFileUpload(file);
+                                    }}
+                                    disabled={uploadingDoc}
+                                    style={{ display: "none" }}
+                                />
+                                <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>📁</div>
+                                <div style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                                    Click to browse or drag & drop
+                                </div>
+                                <div style={{ fontSize: "0.85rem", color: "var(--muted)" }}>
+                                    Supports .txt and .pdf files
+                                </div>
+                            </label>
+                        </div>
+
+                        <div style={{ 
+                            display: "flex", 
+                            alignItems: "center", 
+                            gap: "1rem", 
+                            margin: "1.5rem 0",
+                            color: "var(--muted)",
+                            fontSize: "0.9rem"
+                        }}>
+                            <div style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+                            OR
+                            <div style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+                        </div>
+                        
+                        {/* Text Paste */}
                         <textarea
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            placeholder="Paste your document here..."
+                            placeholder="Paste your document text here..."
                             disabled={uploadingDoc}
                             style={{
                                 width: "100%",
-                                minHeight: "300px",
+                                minHeight: "200px",
                                 padding: "1rem",
                                 background: "rgba(0,0,0,0.2)",
                                 border: "1px solid var(--border)",
                                 borderRadius: "var(--radius-md)",
                                 color: "var(--fg)",
                                 fontSize: "0.9rem",
-                                fontFamily: "monospace",
+                                fontFamily: "inherit",
                                 resize: "vertical",
                                 marginBottom: "1rem",
                             }}
@@ -453,7 +526,7 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                         
                         <button
                             onClick={() => {
-                                handleDocumentUpload(input);
+                                handleTextUpload(input);
                                 setInput("");
                             }}
                             disabled={uploadingDoc || !input.trim()}
@@ -465,7 +538,7 @@ export default function ChatWindow({ mode, onBack }: ChatWindowProps) {
                                 fontWeight: 600,
                             }}
                         >
-                            {uploadingDoc ? "Uploading & Indexing..." : "Upload Document"}
+                            {uploadingDoc ? "Uploading & Indexing..." : "Upload Text"}
                         </button>
 
                         {/* Sample text */}

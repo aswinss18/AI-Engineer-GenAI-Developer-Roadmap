@@ -35,8 +35,6 @@ def initialize_document(text: str):
     dimension = embeddings.shape[1]
     index = faiss.IndexFlatIP(dimension)
     index.add(embeddings)
-    
-    print(f"Indexed chunks: {len(chunks)}")
 
 
 def search_chunks(query: str, k: int = 3):

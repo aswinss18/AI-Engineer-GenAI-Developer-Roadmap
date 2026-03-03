@@ -4,7 +4,7 @@ load_dotenv()  # Must be called before any module that reads env vars is importe
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from route.rag import router as rag_router
-
+from route.upload import router as upload_router
 
 
 app = FastAPI()
@@ -17,3 +17,4 @@ app.add_middleware(
 )
 
 app.include_router(rag_router)
+app.include_router(upload_router)

@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+**/__pycache__/
+**/*.pyc
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+**/.venv/
+
+# Environment variables
+.env
+.env.local
+**/.env
+**/.env.local
+
+# Node
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+out/
+
+# UV
+uv.lock
+
+# Test files
+test_*.py
+*_test.py
