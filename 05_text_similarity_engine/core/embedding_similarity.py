@@ -26,10 +26,10 @@ def compare_texts(text1, text2):
     return similarity
 
 
-# Example
-text1 = "I love playing football"
-text2 = "I enjoy soccer"
+if __name__ == "__main__":
+    # Example usage - only runs when script is executed directly
+    text1 = "I love playing football"
+    text2 = "I enjoy soccer"
 
-similarity_score = compare_texts(text1, text2)
-
-print("Similarity Score:", similarity_score)
+    similarity_score = compare_texts(text1, text2)
+    print("Similarity Score:", similarity_score)
