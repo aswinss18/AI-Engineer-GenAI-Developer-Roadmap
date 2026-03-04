@@ -1,6 +1,6 @@
 "use client";
 
-type Mode = "normal" | "stream" | "structured" | "search" | "document";
+type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity";
 
 interface ModeSelectorProps {
     onSelect: (mode: Mode) => void;
@@ -58,6 +58,15 @@ const modes: {
                 "Upload a document, then chat with it using semantic search and retrieval.",
             tag: "RAG",
             tagColor: "#f97316",
+        },
+        {
+            id: "similarity",
+            icon: "📊",
+            title: "Cosine Similarity",
+            description:
+                "Compare two texts and get their cosine similarity score using embeddings.",
+            tag: "Text Analysis",
+            tagColor: "#8b5cf6",
         },
     ];
 

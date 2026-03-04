@@ -9,4 +9,6 @@ dependencies = [
     "fastapi>=0.135.1",
     "numpy>=2.4.2",
     "openai>=2.24.0",
+    "pydantic>=2.0.0",
+    "uvicorn>=0.32.1",
 ]
