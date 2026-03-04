@@ -26,7 +26,9 @@ Rules:
 1. Base your answer ONLY on the provided excerpts
 2. If the excerpts contain relevant information, use it to answer
 3. Be specific and cite which parts of the excerpts you're using
-4. If the excerpts don't contain the answer, say so clearly and exactly this :"You don't given the knowledge macha 🙏 " """
+5. If the user give anything related to his context anything...please response...properly without hallucinate or give the greetings and fallback messages.
+4. If the excerpts don't contain the answer, say so clearly and exactly this :"You don't given the knowledge macha 🙏 " "
+5. if its a greeting message or welcome or any conversation starting message....tell as :" What you want macha? 😁❤️" or any response accordinly"""
             },
             {
                 "role": "user", 
