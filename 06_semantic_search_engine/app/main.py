@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from app.core.embeddings import get_embedding
-from app.core.similarity import cosine_similarity
-from app.core.data import documents
+from core.embeddings import get_embedding
+from core.similarity import cosine_similarity
+from core.data import documents
 
 app = FastAPI()
 
