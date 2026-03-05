@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import ModeSelector from "./components/ModeSelector";
 import ChatWindow from "./components/ChatWindow";
 
-type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity";
+type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity" | "semantic-search";
 
 export default function Home() {
   const [mode, setMode] = useState<Mode | null>(null);
@@ -14,6 +14,8 @@ export default function Home() {
   const handleModeSelect = (selectedMode: Mode) => {
     if (selectedMode === "similarity") {
       router.push("/similarity");
+    } else if (selectedMode === "semantic-search") {
+      router.push("/semantic-search");
     } else {
       setMode(selectedMode);
     }

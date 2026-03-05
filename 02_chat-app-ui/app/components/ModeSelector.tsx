@@ -1,6 +1,6 @@
 "use client";
 
-type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity";
+type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity" | "semantic-search";
 
 interface ModeSelectorProps {
     onSelect: (mode: Mode) => void;
@@ -67,6 +67,15 @@ const modes: {
                 "Compare two texts and get their cosine similarity score using embeddings.",
             tag: "Text Analysis",
             tagColor: "#8b5cf6",
+        },
+        {
+            id: "semantic-search",
+            icon: "🔍",
+            title: "Semantic Search",
+            description:
+                "Search through a collection of documents using AI-powered semantic understanding.",
+            tag: "Document Search",
+            tagColor: "#06b6d4",
         },
     ];
 
