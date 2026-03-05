@@ -1,6 +1,6 @@
 "use client";
 
-type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity" | "semantic-search";
+type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity" | "semantic-search" | "pdf-rag";
 
 interface ModeSelectorProps {
     onSelect: (mode: Mode) => void;
@@ -76,6 +76,15 @@ const modes: {
                 "Search through a collection of documents using AI-powered semantic understanding.",
             tag: "Document Search",
             tagColor: "#06b6d4",
+        },
+        {
+            id: "pdf-rag",
+            icon: "📚",
+            title: "PDF RAG Assistant",
+            description:
+                "Upload PDF documents and chat with them using advanced RAG (Retrieval-Augmented Generation) pipeline.",
+            tag: "PDF Chat",
+            tagColor: "#e11d48",
         },
     ];
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import ModeSelector from "./components/ModeSelector";
 import ChatWindow from "./components/ChatWindow";
 
-type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity" | "semantic-search";
+type Mode = "normal" | "stream" | "structured" | "search" | "document" | "similarity" | "semantic-search" | "pdf-rag";
 
 export default function Home() {
   const [mode, setMode] = useState<Mode | null>(null);
@@ -16,6 +16,8 @@ export default function Home() {
       router.push("/similarity");
     } else if (selectedMode === "semantic-search") {
       router.push("/semantic-search");
+    } else if (selectedMode === "pdf-rag") {
+      router.push("/pdf-rag");
     } else {
       setMode(selectedMode);
     }
