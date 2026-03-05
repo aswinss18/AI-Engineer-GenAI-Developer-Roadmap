@@ -1,3 +1,9 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file FIRST
+load_dotenv()
+
 from fastapi import FastAPI, UploadFile
 import shutil
 from core.rag_pipeline import process_pdf, ask_question
