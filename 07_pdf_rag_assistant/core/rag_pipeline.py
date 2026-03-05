@@ -43,4 +43,33 @@ Question:
         ]
     )
     
-    return response.choices[0].message.content
+def ask_question_stream(question):
+    query_embedding = get_embedding(question)
+    context = search(query_embedding)
+    
+    if not context:
+        yield "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
+        return
+    
+    prompt = f"""
+Answer the question using the context below.
+
+Context:
+{context}
+
+Question:
+{question}
+"""
+    
+    client = get_client()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        stream=True
+    )
+    
+    for chunk in response:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content

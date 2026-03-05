@@ -33,14 +33,13 @@ export default function PDFRagPage() {
 
         try {
             console.log('Sending question:', text);
-            const res = await fetch('http://localhost:8000/ask', {
+            const res = await fetch('http://localhost:8000/ask-stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `question=${encodeURIComponent(text)}`,
             });
             
             console.log('Response status:', res.status);
-            console.log('Response ok:', res.ok);
             
             if (!res.ok) {
                 const errorText = await res.text();
@@ -49,11 +48,56 @@ export default function PDFRagPage() {
                 return;
             }
             
-            const data = await res.json();
-            console.log('Response data:', data);
-            const response = data.answer || "No answer generated.";
+            // Add placeholder AI message for streaming
+            setMessages((prev) => [...prev, { role: "ai", content: "", streaming: true }]);
             
-            setMessages((prev) => [...prev, { role: "ai", content: response }]);
+            const reader = res.body?.getReader();
+            if (!reader) return;
+            
+            const decoder = new TextDecoder();
+            let buffer = "";
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+                
+                // Process complete SSE events
+                const events = buffer.split('\n\n');
+                buffer = events.pop() || ''; // Keep incomplete event in buffer
+                
+                for (const event of events) {
+                    if (event.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(event.slice(6));
+                            if (data.done) {
+                                // Mark streaming as complete
+                                setMessages((prev) => {
+                                    const updated = [...prev];
+                                    const last = { ...updated[updated.length - 1] };
+                                    last.streaming = false;
+                                    updated[updated.length - 1] = last;
+                                    return updated;
+                                });
+                            } else if (data.chunk) {
+                                // Append chunk to the last message
+                                setMessages((prev) => {
+                                    const updated = [...prev];
+                                    const last = { ...updated[updated.length - 1] };
+                                    last.content += data.chunk;
+                                    updated[updated.length - 1] = last;
+                                    return updated;
+                                });
+                            }
+                        } catch (e) {
+                            console.error('Error parsing SSE data:', e);
+                        }
+                    }
+                }
+            }
+            
         } catch (error) {
             console.error('Fetch error:', error);
             setMessages((prev) => [...prev, { role: "ai", content: `Error connecting to server: ${error.message}` }]);
@@ -281,31 +325,6 @@ export default function PDFRagPage() {
                                 <div style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: "0.25rem" }}>Fast Processing</div>
                                 <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Chunked text embeddings</div>
                             </div>
-                        </div>
-
-                        {/* Debug button - remove after testing */}
-                        <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
-                            <button
-                                onClick={() => {
-                                    setDocumentUploaded(true);
-                                    setMessages([{ 
-                                        role: "ai", 
-                                        content: "✅ Test mode - Document uploaded successfully! You can now ask questions." 
-                                    }]);
-                                }}
-                                style={{
-                                    padding: "0.75rem 1.5rem",
-                                    fontSize: "0.9rem",
-                                    fontWeight: 600,
-                                    background: "rgba(34, 197, 94, 0.1)",
-                                    border: "1px solid rgba(34, 197, 94, 0.3)",
-                                    color: "#22c55e",
-                                    borderRadius: "var(--radius-md)",
-                                    cursor: "pointer",
-                                }}
-                            >
-                                🧪 Test Chat Interface (Debug)
-                            </button>
                         </div>
                     </div>
                 </div>

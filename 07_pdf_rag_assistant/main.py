@@ -6,8 +6,10 @@ load_dotenv()
 
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import shutil
-from core.rag_pipeline import process_pdf, ask_question
+import json
+from core.rag_pipeline import process_pdf, ask_question, ask_question_stream
 
 app = FastAPI()
 
@@ -38,10 +40,17 @@ async def upload_pdf(file: UploadFile):
 
 @app.post("/ask")
 def ask(question: str = Form()):
-
     answer = ask_question(question)
-
     return {
         "question": question,
         "answer": answer
     }
+
+@app.post("/ask-stream")
+async def ask_stream(question: str = Form()):
+    def generate():
+        for chunk in ask_question_stream(question):
+            yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+        yield f"data: {json.dumps({'done': True})}\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/plain")
