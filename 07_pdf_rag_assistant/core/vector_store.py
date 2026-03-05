@@ -21,14 +21,15 @@ def add_embeddings(chunks, embeddings):
 
 
 def search(query_embedding, k=3):
-
+    if len(documents) == 0:
+        return []
+    
     vector = np.array([query_embedding]).astype("float32")
-
     distances, indices = index.search(vector, k)
-
+    
     results = []
-
     for i in indices[0]:
-        results.append(documents[i])
-
+        if i < len(documents):  # Safety check
+            results.append(documents[i])
+    
     return results

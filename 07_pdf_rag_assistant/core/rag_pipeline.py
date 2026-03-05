@@ -22,6 +22,9 @@ def ask_question(question):
     query_embedding = get_embedding(question)
     context = search(query_embedding)
     
+    if not context:
+        return "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
+    
     prompt = f"""
 Answer the question using the context below.
 
