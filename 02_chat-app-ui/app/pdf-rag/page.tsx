@@ -7,6 +7,11 @@ interface Message {
     role: "user" | "ai";
     content: string;
     streaming?: boolean;
+    sources?: Array<{
+        doc: string;
+        page: number;
+        text: string;
+    }>;
 }
 
 export default function PDFRagPage() {
@@ -81,12 +86,15 @@ export default function PDFRagPage() {
                                     updated[updated.length - 1] = last;
                                     return updated;
                                 });
-                            } else if (data.chunk) {
-                                // Append chunk to the last message
+                            } else if (data.answer) {
+                                // Append answer chunk and update sources
                                 setMessages((prev) => {
                                     const updated = [...prev];
                                     const last = { ...updated[updated.length - 1] };
-                                    last.content += data.chunk;
+                                    last.content += data.answer;
+                                    if (data.sources) {
+                                        last.sources = data.sources;
+                                    }
                                     updated[updated.length - 1] = last;
                                     return updated;
                                 });
@@ -98,7 +106,7 @@ export default function PDFRagPage() {
                 }
             }
             
-        } catch (error) {
+        } catch (error: any) {
             console.error('Fetch error:', error);
             setMessages((prev) => [...prev, { role: "ai", content: `Error connecting to server: ${error.message}` }]);
         } finally {
@@ -132,7 +140,7 @@ export default function PDFRagPage() {
                 console.error('Upload error:', errorText);
                 setMessages([{ role: "ai", content: `❌ Error: ${errorText || 'Failed to upload PDF'}` }]);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Upload error:', error);
             setMessages([{ role: "ai", content: "❌ Error connecting to server. Make sure the PDF RAG backend is running on port 8000." }]);
         } finally {
@@ -565,6 +573,71 @@ export default function PDFRagPage() {
                                             animation: "blink 0.7s step-end infinite",
                                         }}
                                     />
+                                )}
+                                
+                                {/* Sources section */}
+                                {msg.sources && msg.sources.length > 0 && !msg.streaming && (
+                                    <div style={{ 
+                                        marginTop: "1rem", 
+                                        paddingTop: "1rem", 
+                                        borderTop: "1px solid var(--border)",
+                                    }}>
+                                        <div style={{ 
+                                            fontSize: "0.8rem", 
+                                            fontWeight: 600, 
+                                            color: "var(--muted)",
+                                            marginBottom: "0.5rem",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "0.5rem"
+                                        }}>
+                                            📚 Sources
+                                        </div>
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                                            {msg.sources.map((source, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    style={{
+                                                        background: "rgba(0,0,0,0.2)",
+                                                        border: "1px solid var(--border)",
+                                                        borderRadius: "var(--radius-sm)",
+                                                        padding: "0.5rem 0.75rem",
+                                                        fontSize: "0.8rem",
+                                                    }}
+                                                >
+                                                    <div style={{ 
+                                                        display: "flex", 
+                                                        alignItems: "center", 
+                                                        gap: "0.5rem",
+                                                        marginBottom: "0.25rem"
+                                                    }}>
+                                                        <span style={{ 
+                                                            fontWeight: 600, 
+                                                            color: "var(--accent2)" 
+                                                        }}>
+                                                            {source.doc}
+                                                        </span>
+                                                        <span style={{ 
+                                                            fontSize: "0.7rem", 
+                                                            color: "var(--muted)",
+                                                            background: "rgba(225, 29, 72, 0.1)",
+                                                            padding: "0.1rem 0.4rem",
+                                                            borderRadius: "4px"
+                                                        }}>
+                                                            Page {source.page}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ 
+                                                        color: "var(--muted)", 
+                                                        lineHeight: 1.4,
+                                                        fontSize: "0.75rem"
+                                                    }}>
+                                                        {source.text}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         )}

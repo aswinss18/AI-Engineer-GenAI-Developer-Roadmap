@@ -10,7 +10,6 @@ embeddings_store = []
 
 
 def add_embeddings(chunks, embeddings):
-
     global documents
 
     vectors = np.array(embeddings).astype("float32")
