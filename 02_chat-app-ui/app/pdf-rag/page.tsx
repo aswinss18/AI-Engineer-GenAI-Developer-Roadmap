@@ -12,6 +12,13 @@ interface Message {
         page: number;
         text: string;
     }>;
+    metadata?: {
+        chunks_found: number;
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        latency: number;
+    };
 }
 
 export default function PDFRagPage() {
@@ -88,14 +95,19 @@ export default function PDFRagPage() {
                                     updated[updated.length - 1] = last;
                                     return updated;
                                 });
-                            } else if (data.answer) {
-                                // Append answer chunk and update sources
+                            } else if (data.answer !== undefined) {
+                                // Append answer chunk and update sources/metadata
                                 setMessages((prev) => {
                                     const updated = [...prev];
                                     const last = { ...updated[updated.length - 1] };
-                                    last.content += data.answer;
+                                    if (data.answer) {
+                                        last.content += data.answer;
+                                    }
                                     if (data.sources) {
                                         last.sources = data.sources;
+                                    }
+                                    if (data.metadata) {
+                                        last.metadata = data.metadata;
                                     }
                                     updated[updated.length - 1] = last;
                                     return updated;
@@ -691,6 +703,94 @@ export default function PDFRagPage() {
                                                     </div>
                                                 </div>
                                             ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Metadata section */}
+                                {msg.metadata && !msg.streaming && (
+                                    <div style={{ 
+                                        marginTop: "1rem", 
+                                        paddingTop: "1rem", 
+                                        borderTop: "1px solid var(--border)",
+                                    }}>
+                                        <div style={{ 
+                                            fontSize: "0.8rem", 
+                                            fontWeight: 600, 
+                                            color: "var(--muted)",
+                                            marginBottom: "0.5rem",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "0.5rem"
+                                        }}>
+                                            📊 Usage Metrics
+                                        </div>
+                                        <div style={{ 
+                                            display: "grid", 
+                                            gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", 
+                                            gap: "0.5rem",
+                                            fontSize: "0.75rem"
+                                        }}>
+                                            <div style={{
+                                                background: "rgba(0,0,0,0.2)",
+                                                border: "1px solid var(--border)",
+                                                borderRadius: "var(--radius-sm)",
+                                                padding: "0.4rem 0.6rem",
+                                                textAlign: "center"
+                                            }}>
+                                                <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                                    {msg.metadata.chunks_found}
+                                                </div>
+                                                <div style={{ color: "var(--muted)" }}>Chunks</div>
+                                            </div>
+                                            <div style={{
+                                                background: "rgba(0,0,0,0.2)",
+                                                border: "1px solid var(--border)",
+                                                borderRadius: "var(--radius-sm)",
+                                                padding: "0.4rem 0.6rem",
+                                                textAlign: "center"
+                                            }}>
+                                                <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                                    {msg.metadata.prompt_tokens.toLocaleString()}
+                                                </div>
+                                                <div style={{ color: "var(--muted)" }}>Prompt</div>
+                                            </div>
+                                            <div style={{
+                                                background: "rgba(0,0,0,0.2)",
+                                                border: "1px solid var(--border)",
+                                                borderRadius: "var(--radius-sm)",
+                                                padding: "0.4rem 0.6rem",
+                                                textAlign: "center"
+                                            }}>
+                                                <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                                    {msg.metadata.completion_tokens.toLocaleString()}
+                                                </div>
+                                                <div style={{ color: "var(--muted)" }}>Response</div>
+                                            </div>
+                                            <div style={{
+                                                background: "rgba(0,0,0,0.2)",
+                                                border: "1px solid var(--border)",
+                                                borderRadius: "var(--radius-sm)",
+                                                padding: "0.4rem 0.6rem",
+                                                textAlign: "center"
+                                            }}>
+                                                <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                                    {msg.metadata.total_tokens.toLocaleString()}
+                                                </div>
+                                                <div style={{ color: "var(--muted)" }}>Total</div>
+                                            </div>
+                                            <div style={{
+                                                background: "rgba(0,0,0,0.2)",
+                                                border: "1px solid var(--border)",
+                                                borderRadius: "var(--radius-sm)",
+                                                padding: "0.4rem 0.6rem",
+                                                textAlign: "center"
+                                            }}>
+                                                <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                                    {msg.metadata.latency}ms
+                                                </div>
+                                                <div style={{ color: "var(--muted)" }}>Latency</div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}

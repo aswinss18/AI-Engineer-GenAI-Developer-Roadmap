@@ -158,6 +158,7 @@ Question:
         ],
         stream=True
     )
+    usage = response.usage
     
     # First yield the sources
     sources = []
@@ -177,6 +178,9 @@ Question:
             yield content
     
 def ask_question_stream_with_sources(question):
+    import time
+    start_time = time.time()
+    
     logger.info(f"Received question: {question}")
     query_embedding = get_embedding(question)
     context_chunks = search(query_embedding)
@@ -187,7 +191,14 @@ def ask_question_stream_with_sources(question):
         logger.warning("No context chunks found")
         yield {
             "answer": "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint.",
-            "sources": []
+            "sources": [],
+            "metadata": {
+                "chunks_found": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "latency": round((time.time() - start_time) * 1000, 2)  # ms
+            }
         }
         return
     
@@ -210,7 +221,8 @@ Question:
         messages=[
             {"role": "user", "content": prompt}
         ],
-        stream=True
+        stream=True,
+        stream_options={"include_usage": True}  # This enables usage tracking in streaming
     )
     
     # Prepare sources
@@ -224,10 +236,47 @@ Question:
     
     logger.info(f"Prepared {len(sources)} sources")
     
-    # Stream the answer with sources
+    # Track usage information
+    usage_info = {
+        "chunks_found": len(context_chunks),
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "latency": 0
+    }
+    
+    # Stream the answer with sources and metadata
     for chunk in response:
-        if chunk.choices[0].delta.content is not None:
+        # Safety check for choices array
+        if chunk.choices and len(chunk.choices) > 0:
+            if chunk.choices[0].delta.content is not None:
+                current_latency = round((time.time() - start_time) * 1000, 2)
+                usage_info["latency"] = current_latency
+                
+                yield {
+                    "answer": chunk.choices[0].delta.content,
+                    "sources": sources,
+                    "metadata": usage_info
+                }
+        
+        # Capture usage information when available (usually in the last chunk)
+        if hasattr(chunk, 'usage') and chunk.usage:
+            final_latency = round((time.time() - start_time) * 1000, 2)
+            usage_info.update({
+                "prompt_tokens": chunk.usage.prompt_tokens,
+                "completion_tokens": chunk.usage.completion_tokens,
+                "total_tokens": chunk.usage.total_tokens,
+                "latency": final_latency
+            })
+            logger.info(f"Prompt tokens: {chunk.usage.prompt_tokens}")
+            logger.info(f"Completion tokens: {chunk.usage.completion_tokens}")
+            logger.info(f"Total tokens: {chunk.usage.total_tokens}")
+            logger.info(f"Latency: {final_latency}ms")
+            
+            # Send final chunk with complete usage info
             yield {
-                "answer": chunk.choices[0].delta.content,
-                "sources": sources
+                "answer": "",
+                "sources": sources,
+                "metadata": usage_info,
+                "usage_complete": True
             }
