@@ -54,3 +54,7 @@ uv.lock
 # Test files
 test_*.py
 *_test.py
+
+# PDF RAG Assistant - Cache and uploads
+**/cache/
+**/uploaded/

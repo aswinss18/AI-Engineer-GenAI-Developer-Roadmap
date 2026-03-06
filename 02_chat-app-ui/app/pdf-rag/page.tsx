@@ -20,6 +20,8 @@ export default function PDFRagPage() {
     const [loading, setLoading] = useState(false);
     const [documentUploaded, setDocumentUploaded] = useState(false);
     const [uploadingDoc, setUploadingDoc] = useState(false);
+    const [processingDoc, setProcessingDoc] = useState(false);
+    const [processingStatus, setProcessingStatus] = useState("");
     const bottomRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
@@ -29,7 +31,7 @@ export default function PDFRagPage() {
 
     const sendMessage = async () => {
         const text = input.trim();
-        if (!text || loading) return;
+        if (!text || loading || processingDoc) return;
 
         const userMsg: Message = { role: "user", content: text };
         setMessages((prev) => [...prev, userMsg]);
@@ -114,6 +116,26 @@ export default function PDFRagPage() {
         }
     };
 
+    const checkProcessingStatus = async () => {
+        try {
+            const res = await fetch('http://localhost:8000/status');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.documents_loaded > 0) {
+                    setProcessingDoc(false);
+                    setProcessingStatus("");
+                    return true; // Processing complete
+                } else {
+                    setProcessingStatus(`Processing document... (${data.documents_loaded} chunks loaded)`);
+                    return false; // Still processing
+                }
+            }
+        } catch (error) {
+            console.error('Status check error:', error);
+        }
+        return false;
+    };
+
     const handleFileUpload = async (file: File) => {
         setUploadingDoc(true);
         const formData = new FormData();
@@ -130,11 +152,42 @@ export default function PDFRagPage() {
             if (res.ok) {
                 const data = await res.json();
                 console.log('Upload response data:', data);
-                setDocumentUploaded(true);
+                
+                // Start processing status polling
+                setProcessingDoc(true);
+                setProcessingStatus("Processing document...");
                 setMessages([{ 
                     role: "ai", 
-                    content: `✅ PDF uploaded and processed successfully!\n\n${data.message || 'Document is ready for questions.'}\n\nYou can now ask questions about the document.` 
+                    content: `✅ PDF uploaded successfully!\n\n${data.message || 'Document is being processed in the background.'}\n\nPlease wait while we process your document...` 
                 }]);
+                
+                // Poll for processing completion
+                const pollInterval = setInterval(async () => {
+                    const isComplete = await checkProcessingStatus();
+                    if (isComplete) {
+                        clearInterval(pollInterval);
+                        setDocumentUploaded(true);
+                        setMessages([{ 
+                            role: "ai", 
+                            content: `✅ PDF processed successfully!\n\nYour document is now ready for questions. You can ask anything about the content.` 
+                        }]);
+                    }
+                }, 2000); // Check every 2 seconds
+                
+                // Timeout after 60 seconds
+                setTimeout(() => {
+                    clearInterval(pollInterval);
+                    if (processingDoc) {
+                        setProcessingDoc(false);
+                        setProcessingStatus("");
+                        setMessages([{ 
+                            role: "ai", 
+                            content: `⚠️ Processing is taking longer than expected. You can try asking questions now, but the document might not be fully indexed yet.` 
+                        }]);
+                        setDocumentUploaded(true);
+                    }
+                }, 60000);
+                
             } else {
                 const errorText = await res.text();
                 console.error('Upload error:', errorText);
@@ -417,18 +470,20 @@ export default function PDFRagPage() {
                             width: 8,
                             height: 8,
                             borderRadius: "50%",
-                            background: loading ? "#facc15" : "#4ade80",
-                            boxShadow: loading ? "0 0 6px #facc15" : "0 0 6px #4ade80",
+                            background: processingDoc ? "#f59e0b" : loading ? "#facc15" : "#4ade80",
+                            boxShadow: processingDoc ? "0 0 6px #f59e0b" : loading ? "0 0 6px #facc15" : "0 0 6px #4ade80",
                             transition: "background 0.3s, box-shadow 0.3s",
                         }}
                     />
-                    {loading ? "Thinking…" : "Ready"}
+                    {processingDoc ? "Processing…" : loading ? "Thinking…" : "Ready"}
                 </div>
 
                 {/* Upload new document button */}
                 <button
                     onClick={() => {
                         setDocumentUploaded(false);
+                        setProcessingDoc(false);
+                        setProcessingStatus("");
                         setMessages([]);
                     }}
                     style={{
@@ -660,44 +715,70 @@ export default function PDFRagPage() {
                     bottom: "1rem",
                 }}
             >
-                <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            sendMessage();
-                        }
-                    }}
-                    placeholder="Ask questions about your PDF document... (Enter to send, Shift+Enter for newline)"
-                    disabled={loading}
-                    rows={1}
-                    style={{
-                        flex: 1,
-                        background: "transparent",
-                        border: "none",
-                        outline: "none",
-                        color: "var(--fg)",
-                        fontSize: "0.93rem",
-                        resize: "none",
-                        lineHeight: 1.6,
-                        maxHeight: "160px",
-                        overflowY: "auto",
-                    }}
-                />
-                <button
-                    className="accent-btn"
-                    onClick={sendMessage}
-                    disabled={loading || !input.trim()}
-                    style={{ flexShrink: 0, padding: "0.55rem 1.25rem", fontSize: "0.875rem" }}
-                >
-                    {loading ? "…" : "Send"}
-                </button>
+                {processingDoc ? (
+                    <div style={{ 
+                        flex: 1, 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: "0.75rem",
+                        color: "var(--muted)",
+                        fontSize: "0.9rem"
+                    }}>
+                        <div
+                            style={{
+                                width: 16,
+                                height: 16,
+                                border: "2px solid var(--border)",
+                                borderTop: "2px solid #f59e0b",
+                                borderRadius: "50%",
+                                animation: "spin 1s linear infinite",
+                            }}
+                        />
+                        <span>{processingStatus || "Processing document..."}</span>
+                    </div>
+                ) : (
+                    <>
+                        <textarea
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    sendMessage();
+                                }
+                            }}
+                            placeholder="Ask questions about your PDF document... (Enter to send, Shift+Enter for newline)"
+                            disabled={loading || processingDoc}
+                            rows={1}
+                            style={{
+                                flex: 1,
+                                background: "transparent",
+                                border: "none",
+                                outline: "none",
+                                color: "var(--fg)",
+                                fontSize: "0.93rem",
+                                resize: "none",
+                                lineHeight: 1.6,
+                                maxHeight: "160px",
+                                overflowY: "auto",
+                            }}
+                        />
+                        <button
+                            className="accent-btn"
+                            onClick={sendMessage}
+                            disabled={loading || !input.trim() || processingDoc}
+                            style={{ flexShrink: 0, padding: "0.55rem 1.25rem", fontSize: "0.875rem" }}
+                        >
+                            {loading ? "…" : "Send"}
+                        </button>
+                    </>
+                )}
             </div>
 
-            {/* Blinking cursor keyframe */}
+            {/* Spinning animation */}
             <style>{`
                 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+                @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
             `}</style>
         </div>
     );

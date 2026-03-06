@@ -9,6 +9,15 @@ documents = []
 embeddings_store = []
 
 
+def clear_documents():
+    """Clear all documents and reset the index"""
+    global documents, index
+    documents.clear()
+    embeddings_store.clear()
+    # Reset the index
+    index = faiss.IndexFlatL2(dimension)
+
+
 def add_embeddings(chunks, embeddings):
     global documents
 

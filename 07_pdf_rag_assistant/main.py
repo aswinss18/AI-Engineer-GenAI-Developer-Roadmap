@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 import shutil
 import json
 from core.rag_pipeline import process_pdf, ask_question, ask_question_stream, ask_question_stream_with_sources
+from core.vector_store import documents, clear_documents
 
 app = FastAPI()
 
@@ -30,7 +31,9 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
-
+    # Clear previous documents
+    clear_documents()
+    
     path = UPLOAD_DIR + file.filename
 
     with open(path, "wb") as buffer:
@@ -47,6 +50,24 @@ def ask(question: str = Form()):
     return {
         "question": question,
         "answer": answer
+    }
+
+@app.get("/cache/clear")
+def clear_cache():
+    """Clear all cached files"""
+    import shutil
+    if os.path.exists("cache/"):
+        shutil.rmtree("cache/")
+        os.makedirs("cache/", exist_ok=True)
+    return {"message": "Cache cleared successfully"}
+
+@app.get("/status")
+def get_status():
+    cache_files = len([f for f in os.listdir("cache/") if f.endswith('.json')]) if os.path.exists("cache/") else 0
+    return {
+        "documents_loaded": len(documents),
+        "cached_files": cache_files,
+        "status": "ready" if len(documents) > 0 else "no_documents"
     }
 
 @app.post("/ask-stream")
