@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file FIRST
 load_dotenv()
 
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import shutil
@@ -29,16 +29,16 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile):
+async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
 
     path = UPLOAD_DIR + file.filename
 
     with open(path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    process_pdf(path)
+    background_tasks.add_task(process_pdf, path)
 
-    return {"message": "PDF processed successfully"}
+    return {"message": "PDF upload started, processing in background"}
     
 
 @app.post("/ask")

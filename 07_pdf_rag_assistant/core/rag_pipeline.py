@@ -48,7 +48,7 @@ Question:
     
     return response.choices[0].message.content
 
-def ask_question_stream(question):
+async def ask_question_stream(question):
     query_embedding = get_embedding(question)
     context_chunks = search(query_embedding)
     
