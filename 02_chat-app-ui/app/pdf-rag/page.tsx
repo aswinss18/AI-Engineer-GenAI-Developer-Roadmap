@@ -11,13 +11,21 @@ interface Message {
         doc: string;
         page: number;
         text: string;
+        combined_score?: number;
+        cosine_similarity?: number;
+        compressed?: boolean;
+        original_length?: number;
     }>;
     metadata?: {
         chunks_found: number;
+        initial_chunks?: number;
+        reranked_chunks?: number;
+        final_chunks?: number;
         prompt_tokens: number;
         completion_tokens: number;
         total_tokens: number;
         latency: number;
+        pipeline_version?: string;
     };
 }
 
@@ -939,6 +947,29 @@ export default function PDFRagPage() {
                                                         }}>
                                                             Page {source.page}
                                                         </span>
+                                                        {source.combined_score && (
+                                                            <span style={{ 
+                                                                fontSize: "0.65rem", 
+                                                                color: "#22c55e",
+                                                                background: "rgba(34, 197, 94, 0.1)",
+                                                                padding: "0.1rem 0.3rem",
+                                                                borderRadius: "3px",
+                                                                fontWeight: 600
+                                                            }}>
+                                                                Score: {source.combined_score}
+                                                            </span>
+                                                        )}
+                                                        {source.compressed && (
+                                                            <span style={{ 
+                                                                fontSize: "0.65rem", 
+                                                                color: "#f59e0b",
+                                                                background: "rgba(245, 158, 11, 0.1)",
+                                                                padding: "0.1rem 0.3rem",
+                                                                borderRadius: "3px"
+                                                            }}>
+                                                                Compressed
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div style={{ 
                                                         color: "var(--muted)", 
@@ -987,8 +1018,22 @@ export default function PDFRagPage() {
                                                 <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
                                                     {msg.metadata.chunks_found}
                                                 </div>
-                                                <div style={{ color: "var(--muted)" }}>Chunks</div>
+                                                <div style={{ color: "var(--muted)" }}>Found</div>
                                             </div>
+                                            {msg.metadata.final_chunks && (
+                                                <div style={{
+                                                    background: "rgba(0,0,0,0.2)",
+                                                    border: "1px solid var(--border)",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    padding: "0.4rem 0.6rem",
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                                        {msg.metadata.final_chunks}
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)" }}>Used</div>
+                                                </div>
+                                            )}
                                             <div style={{
                                                 background: "rgba(0,0,0,0.2)",
                                                 border: "1px solid var(--border)",
@@ -1037,6 +1082,20 @@ export default function PDFRagPage() {
                                                 </div>
                                                 <div style={{ color: "var(--muted)" }}>Latency</div>
                                             </div>
+                                            {msg.metadata.pipeline_version && (
+                                                <div style={{
+                                                    background: "rgba(34, 197, 94, 0.1)",
+                                                    border: "1px solid rgba(34, 197, 94, 0.3)",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    padding: "0.4rem 0.6rem",
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "#22c55e", fontWeight: 600, fontSize: "0.7rem" }}>
+                                                        Enhanced
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)" }}>Pipeline</div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}

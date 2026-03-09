@@ -52,6 +52,10 @@ def add_embeddings(chunks, embeddings):
 
 
 def search(query_embedding, k=10):
+    """
+    Enhanced search with distance scores for reranking
+    Returns top-k results with similarity scores
+    """
     if len(documents) == 0:
         return []
     
@@ -59,12 +63,20 @@ def search(query_embedding, k=10):
     distances, indices = index.search(vector, k)
     
     results = []
-    for i in indices[0]:
+    for i, distance in zip(indices[0], distances[0]):
         if i < len(documents):  # Safety check
-            results.append(documents[i])
+            # Convert L2 distance to similarity score (lower distance = higher similarity)
+            similarity_score = 1.0 / (1.0 + distance)
+            results.append({
+                "text": documents[i]["text"],
+                "page": documents[i]["page"],
+                "doc": documents[i]["doc"],
+                "chunk_index": documents[i].get("chunk_index", i),
+                "similarity_score": similarity_score,
+                "distance": float(distance)
+            })
     
     return results
-
 
 def load_persisted_state():
     """Load persisted state on startup (Requirements 4.1, 4.2, 4.3, 4.4)"""

@@ -7,6 +7,7 @@ from core.embeddings import get_embedding
 from core.vector_store import add_embeddings, search
 from core.pdf_loader import load_pdf
 from core.chunker import chunk_text
+from core.reranker import rerank_chunks, compress_chunks, smart_context_selection
 from openai import OpenAI
 
 # Set up logging
@@ -100,17 +101,37 @@ def process_pdf(file_path):
         raise
 
 def ask_question(question):
-    query_embedding = get_embedding(question)
-    context_chunks = search(query_embedding)
+    """
+    Enhanced RAG pipeline with reranking and compression
+    Query → Vector search (top 10) → Rerank → Select best 3 → Send to LLM
+    """
+    logger.info(f"Processing question with enhanced pipeline: {question}")
     
-    if not context_chunks:
+    # Step 1: Get query embedding
+    query_embedding = get_embedding(question)
+    
+    # Step 2: Vector search for top 10 candidates
+    initial_chunks = search(query_embedding, k=10)
+    logger.info(f"Initial vector search found {len(initial_chunks)} chunks")
+    
+    if not initial_chunks:
         return "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
     
-    # Build context from chunks
-    context = "\n\n".join([chunk["text"] for chunk in context_chunks])
+    # Step 3: Rerank chunks using cosine similarity
+    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=3)
+    logger.info(f"Reranked to top {len(reranked_chunks)} chunks")
+    
+    # Step 4: Compress chunks if needed
+    compressed_chunks = compress_chunks(reranked_chunks, max_chunk_length=600)
+    
+    # Step 5: Smart context selection
+    final_chunks = smart_context_selection(compressed_chunks, max_context_length=2000)
+    
+    # Build context from final chunks
+    context = "\n\n".join([chunk["text"] for chunk in final_chunks])
     
     prompt = f"""
-Answer the question using the context below.
+Answer the question using the context below. The context has been carefully selected and ranked for relevance.
 
 Context:
 {context}
@@ -127,21 +148,40 @@ Question:
         ]
     )
     
+    logger.info(f"Enhanced pipeline complete. Used {len(final_chunks)} chunks in final context")
+    
     return response.choices[0].message.content
 
 async def ask_question_stream(question):
-    query_embedding = get_embedding(question)
-    context_chunks = search(query_embedding)
+    """
+    Enhanced streaming RAG pipeline with reranking and compression
+    """
+    logger.info(f"Processing streaming question with enhanced pipeline: {question}")
     
-    if not context_chunks:
+    # Step 1: Get query embedding
+    query_embedding = get_embedding(question)
+    
+    # Step 2: Vector search for top 10 candidates
+    initial_chunks = search(query_embedding, k=10)
+    
+    if not initial_chunks:
         yield "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
         return
     
-    # Build context from chunks
-    context = "\n\n".join([chunk["text"] for chunk in context_chunks])
+    # Step 3: Rerank chunks using cosine similarity
+    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=3)
+    
+    # Step 4: Compress chunks if needed
+    compressed_chunks = compress_chunks(reranked_chunks, max_chunk_length=600)
+    
+    # Step 5: Smart context selection
+    final_chunks = smart_context_selection(compressed_chunks, max_context_length=2000)
+    
+    # Build context from final chunks
+    context = "\n\n".join([chunk["text"] for chunk in final_chunks])
     
     prompt = f"""
-Answer the question using the context below.
+Answer the question using the context below. The context has been carefully selected and ranked for relevance.
 
 Context:
 {context}
@@ -158,55 +198,63 @@ Question:
         ],
         stream=True
     )
-    usage = response.usage
-    
-    # First yield the sources
-    sources = []
-    for chunk in context_chunks:
-        sources.append({
-            "doc": chunk["doc"],
-            "page": chunk["page"],
-            "text": chunk["text"][:100] + "..." if len(chunk["text"]) > 100 else chunk["text"]
-        })
     
     # Stream the answer
-    answer_chunks = []
     for chunk in response:
         if chunk.choices[0].delta.content is not None:
-            content = chunk.choices[0].delta.content
-            answer_chunks.append(content)
-            yield content
+            yield chunk.choices[0].delta.content
     
 def ask_question_stream_with_sources(question):
+    """
+    Enhanced streaming RAG pipeline with sources, reranking and compression
+    Query → Vector search (top 10) → Rerank → Select best 3 → Send to LLM
+    """
     import time
     start_time = time.time()
     
-    logger.info(f"Received question: {question}")
+    logger.info(f"Processing streaming question with enhanced pipeline: {question}")
+    
+    # Step 1: Get query embedding
     query_embedding = get_embedding(question)
-    context_chunks = search(query_embedding)
     
-    logger.info(f"Found {len(context_chunks)} context chunks")
+    # Step 2: Vector search for top 10 candidates
+    initial_chunks = search(query_embedding, k=10)
+    logger.info(f"Initial vector search found {len(initial_chunks)} chunks")
     
-    if not context_chunks:
+    if not initial_chunks:
         logger.warning("No context chunks found")
         yield {
             "answer": "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint.",
             "sources": [],
             "metadata": {
                 "chunks_found": 0,
+                "initial_chunks": 0,
+                "reranked_chunks": 0,
+                "final_chunks": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
                 "total_tokens": 0,
-                "latency": round((time.time() - start_time) * 1000, 2)  # ms
+                "latency": round((time.time() - start_time) * 1000, 2)
             }
         }
         return
     
-    # Build context from chunks
-    context = "\n\n".join([chunk["text"] for chunk in context_chunks])
+    # Step 3: Rerank chunks using cosine similarity
+    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=5)
+    logger.info(f"Reranked to top {len(reranked_chunks)} chunks")
+    
+    # Step 4: Compress chunks if needed
+    compressed_chunks = compress_chunks(reranked_chunks, max_chunk_length=600)
+    
+    # Step 5: Smart context selection
+    final_chunks = smart_context_selection(compressed_chunks, max_context_length=2500)
+    logger.info(f"Final context selection: {len(final_chunks)} chunks")
+    
+    # Build context from final chunks
+    context = "\n\n".join([chunk["text"] for chunk in final_chunks])
     
     prompt = f"""
-Answer the question using the context below.
+Answer the question using the context below. The context has been carefully selected and ranked for relevance.
 
 Context:
 {context}
@@ -222,32 +270,48 @@ Question:
             {"role": "user", "content": prompt}
         ],
         stream=True,
-        stream_options={"include_usage": True}  # This enables usage tracking in streaming
+        stream_options={"include_usage": True}
     )
     
-    # Prepare sources
+    # Prepare sources from final chunks (show reranking scores)
     sources = []
-    for chunk in context_chunks:
-        sources.append({
+    for chunk in final_chunks:
+        source_text = chunk["text"][:150] + "..." if len(chunk["text"]) > 150 else chunk["text"]
+        
+        source = {
             "doc": chunk["doc"],
             "page": chunk["page"],
-            "text": chunk["text"][:100] + "..." if len(chunk["text"]) > 100 else chunk["text"]
-        })
+            "text": source_text
+        }
+        
+        # Add reranking information if available
+        if chunk.get("reranked"):
+            source["cosine_similarity"] = round(chunk.get("cosine_similarity", 0), 3)
+            source["combined_score"] = round(chunk.get("combined_score", 0), 3)
+        
+        if chunk.get("compressed"):
+            source["compressed"] = True
+            source["original_length"] = chunk.get("original_length", 0)
+        
+        sources.append(source)
     
-    logger.info(f"Prepared {len(sources)} sources")
+    logger.info(f"Prepared {len(sources)} sources with enhanced metadata")
     
     # Track usage information
     usage_info = {
-        "chunks_found": len(context_chunks),
+        "chunks_found": len(initial_chunks),
+        "initial_chunks": len(initial_chunks),
+        "reranked_chunks": len(reranked_chunks),
+        "final_chunks": len(final_chunks),
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
-        "latency": 0
+        "latency": 0,
+        "pipeline_version": "enhanced_v1"
     }
     
-    # Stream the answer with sources and metadata
+    # Stream the answer with enhanced metadata
     for chunk in response:
-        # Safety check for choices array
         if chunk.choices and len(chunk.choices) > 0:
             if chunk.choices[0].delta.content is not None:
                 current_latency = round((time.time() - start_time) * 1000, 2)
@@ -259,7 +323,7 @@ Question:
                     "metadata": usage_info
                 }
         
-        # Capture usage information when available (usually in the last chunk)
+        # Capture usage information when available
         if hasattr(chunk, 'usage') and chunk.usage:
             final_latency = round((time.time() - start_time) * 1000, 2)
             usage_info.update({
@@ -268,10 +332,15 @@ Question:
                 "total_tokens": chunk.usage.total_tokens,
                 "latency": final_latency
             })
-            logger.info(f"Prompt tokens: {chunk.usage.prompt_tokens}")
-            logger.info(f"Completion tokens: {chunk.usage.completion_tokens}")
-            logger.info(f"Total tokens: {chunk.usage.total_tokens}")
-            logger.info(f"Latency: {final_latency}ms")
+            
+            logger.info(f"Enhanced pipeline complete:")
+            logger.info(f"  Initial chunks: {len(initial_chunks)}")
+            logger.info(f"  Reranked chunks: {len(reranked_chunks)}")
+            logger.info(f"  Final chunks: {len(final_chunks)}")
+            logger.info(f"  Prompt tokens: {chunk.usage.prompt_tokens}")
+            logger.info(f"  Completion tokens: {chunk.usage.completion_tokens}")
+            logger.info(f"  Total tokens: {chunk.usage.total_tokens}")
+            logger.info(f"  Latency: {final_latency}ms")
             
             # Send final chunk with complete usage info
             yield {
