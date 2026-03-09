@@ -58,3 +58,4 @@ test_*.py
 # PDF RAG Assistant - Cache and uploads
 **/cache/
 **/uploaded/
+**/persistence/
