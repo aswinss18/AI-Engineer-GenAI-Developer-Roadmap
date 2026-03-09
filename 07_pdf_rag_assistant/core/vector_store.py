@@ -51,7 +51,7 @@ def add_embeddings(chunks, embeddings):
         # Continue operation even if persistence fails
 
 
-def search(query_embedding, k=3):
+def search(query_embedding, k=10):
     if len(documents) == 0:
         return []
     
