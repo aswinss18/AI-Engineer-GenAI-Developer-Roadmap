@@ -10,9 +10,25 @@ from fastapi.responses import StreamingResponse
 import shutil
 import json
 from core.rag_pipeline import process_pdf, ask_question, ask_question_stream, ask_question_stream_with_sources
-from core.vector_store import documents, clear_documents
+from core.vector_store import documents, clear_documents, load_persisted_state, get_persistence_status
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    """Load persisted state on server startup"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        success = load_persisted_state()
+        if success:
+            logger.info(f"Startup complete: {len(documents)} chunks loaded from persisted state")
+        else:
+            logger.info("Startup complete: initialized with empty state")
+    except Exception as e:
+        logger.error(f"Error during startup state loading: {e}")
+        logger.info("Continuing with empty state")
 
 # Add CORS middleware
 app.add_middleware(
@@ -69,6 +85,43 @@ def get_status():
         "cached_files": cache_files,
         "status": "ready" if len(documents) > 0 else "no_documents"
     }
+
+@app.get("/persistence/status")
+def get_persistence_status_endpoint():
+    """Get persistence health status including loaded document count, last save time, and validation status"""
+    try:
+        # Get persistence status from vector store
+        persistence_status = get_persistence_status()
+        
+        # Add current runtime information
+        persistence_status["loaded_document_count"] = len(documents)
+        persistence_status["validation_status"] = "healthy" if not persistence_status.get("error") else "error"
+        
+        return persistence_status
+    except Exception as e:
+        return {
+            "error": str(e),
+            "loaded_document_count": len(documents),
+            "validation_status": "error"
+        }
+@app.post("/persistence/clear")
+def clear_persistence():
+    """Clear all persisted state while preserving cache system"""
+    try:
+        # Clear all persisted data and reset to empty state
+        clear_documents()
+
+        return {
+            "message": "Persisted state cleared successfully",
+            "documents_loaded": len(documents),
+            "status": "empty"
+        }
+    except Exception as e:
+        return {
+            "error": f"Failed to clear persisted state: {str(e)}",
+            "documents_loaded": len(documents),
+            "status": "error"
+        }
 
 @app.post("/ask-stream")
 async def ask_stream(question: str = Form()):

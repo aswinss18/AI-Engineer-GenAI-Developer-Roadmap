@@ -29,12 +29,55 @@ export default function PDFRagPage() {
     const [uploadingDoc, setUploadingDoc] = useState(false);
     const [processingDoc, setProcessingDoc] = useState(false);
     const [processingStatus, setProcessingStatus] = useState("");
+    const [persistenceStatus, setPersistenceStatus] = useState<any>(null);
+    const [showPersistencePanel, setShowPersistencePanel] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
+
+    // Load persistence status on component mount
+    useEffect(() => {
+        checkPersistenceStatus();
+    }, []);
+
+    const checkPersistenceStatus = async () => {
+        try {
+            const res = await fetch('http://localhost:8000/persistence/status');
+            if (res.ok) {
+                const data = await res.json();
+                setPersistenceStatus(data);
+            }
+        } catch (error) {
+            console.error('Persistence status check error:', error);
+        }
+    };
+
+    const clearPersistence = async () => {
+        try {
+            const res = await fetch('http://localhost:8000/persistence/clear', {
+                method: 'POST'
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPersistenceStatus(null);
+                setMessages([{ 
+                    role: "ai", 
+                    content: `✅ ${data.message}\n\nAll cached documents and embeddings have been cleared. You can upload a new PDF to start fresh.` 
+                }]);
+                // Refresh status
+                setTimeout(checkPersistenceStatus, 1000);
+            }
+        } catch (error) {
+            console.error('Clear persistence error:', error);
+            setMessages([{ 
+                role: "ai", 
+                content: "❌ Error clearing persistence. Please check if the backend is running." 
+            }]);
+        }
+    };
 
     const sendMessage = async () => {
         const text = input.trim();
@@ -183,6 +226,8 @@ export default function PDFRagPage() {
                             role: "ai", 
                             content: `✅ PDF processed successfully!\n\nYour document is now ready for questions. You can ask anything about the content.` 
                         }]);
+                        // Refresh persistence status after successful processing
+                        checkPersistenceStatus();
                     }
                 }, 2000); // Check every 2 seconds
                 
@@ -520,7 +565,208 @@ export default function PDFRagPage() {
                 >
                     📄 New PDF
                 </button>
+
+                {/* Persistence status button */}
+                <button
+                    onClick={() => {
+                        setShowPersistencePanel(!showPersistencePanel);
+                        if (!showPersistencePanel) checkPersistenceStatus();
+                    }}
+                    style={{
+                        background: "rgba(59, 130, 246, 0.1)",
+                        border: "1px solid rgba(59, 130, 246, 0.3)",
+                        color: "#3b82f6",
+                        cursor: "pointer",
+                        fontSize: "0.8rem",
+                        padding: "0.4rem 0.8rem",
+                        borderRadius: "var(--radius-md)",
+                        transition: "background 0.15s, border-color 0.15s",
+                        fontWeight: 600,
+                    }}
+                    onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = "rgba(59, 130, 246, 0.15)";
+                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(59, 130, 246, 0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = "rgba(59, 130, 246, 0.1)";
+                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(59, 130, 246, 0.3)";
+                    }}
+                >
+                    💾 Cache
+                </button>
             </div>
+
+            {/* Persistence Panel */}
+            {showPersistencePanel && (
+                <div
+                    className="glass"
+                    style={{
+                        margin: "0.5rem 0 0",
+                        padding: "1rem",
+                        borderRadius: "var(--radius-lg)",
+                    }}
+                >
+                    <div style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        justifyContent: "space-between",
+                        marginBottom: "1rem"
+                    }}>
+                        <h3 style={{ 
+                            fontSize: "0.9rem", 
+                            fontWeight: 600, 
+                            color: "var(--fg)",
+                            margin: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem"
+                        }}>
+                            💾 Persistence Status
+                        </h3>
+                        <button
+                            onClick={checkPersistenceStatus}
+                            style={{
+                                background: "transparent",
+                                border: "1px solid var(--border)",
+                                color: "var(--muted)",
+                                cursor: "pointer",
+                                fontSize: "0.75rem",
+                                padding: "0.25rem 0.5rem",
+                                borderRadius: "var(--radius-sm)",
+                                transition: "all 0.15s",
+                            }}
+                            onMouseEnter={(e) => {
+                                (e.currentTarget as HTMLElement).style.color = "var(--fg)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "var(--accent2)";
+                            }}
+                            onMouseLeave={(e) => {
+                                (e.currentTarget as HTMLElement).style.color = "var(--muted)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                            }}
+                        >
+                            🔄 Refresh
+                        </button>
+                    </div>
+
+                    {persistenceStatus ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                            {/* Status Grid */}
+                            <div style={{ 
+                                display: "grid", 
+                                gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", 
+                                gap: "0.5rem",
+                                fontSize: "0.75rem"
+                            }}>
+                                <div style={{
+                                    background: "rgba(0,0,0,0.2)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "0.5rem",
+                                    textAlign: "center"
+                                }}>
+                                    <div style={{ 
+                                        color: persistenceStatus.validation_status === "healthy" ? "#4ade80" : "#f87171", 
+                                        fontWeight: 600 
+                                    }}>
+                                        {persistenceStatus.validation_status === "healthy" ? "✅" : "❌"}
+                                    </div>
+                                    <div style={{ color: "var(--muted)" }}>Status</div>
+                                </div>
+                                <div style={{
+                                    background: "rgba(0,0,0,0.2)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "0.5rem",
+                                    textAlign: "center"
+                                }}>
+                                    <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                        {persistenceStatus.loaded_document_count || 0}
+                                    </div>
+                                    <div style={{ color: "var(--muted)" }}>Documents</div>
+                                </div>
+                                <div style={{
+                                    background: "rgba(0,0,0,0.2)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "0.5rem",
+                                    textAlign: "center"
+                                }}>
+                                    <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                        {persistenceStatus.cache_files || 0}
+                                    </div>
+                                    <div style={{ color: "var(--muted)" }}>Cache Files</div>
+                                </div>
+                                <div style={{
+                                    background: "rgba(0,0,0,0.2)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "0.5rem",
+                                    textAlign: "center"
+                                }}>
+                                    <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                        {persistenceStatus.last_save_time ? 
+                                            new Date(persistenceStatus.last_save_time).toLocaleTimeString() : 
+                                            "Never"
+                                        }
+                                    </div>
+                                    <div style={{ color: "var(--muted)" }}>Last Save</div>
+                                </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                                <button
+                                    onClick={clearPersistence}
+                                    style={{
+                                        background: "rgba(239, 68, 68, 0.1)",
+                                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                                        color: "#ef4444",
+                                        cursor: "pointer",
+                                        fontSize: "0.75rem",
+                                        padding: "0.4rem 0.8rem",
+                                        borderRadius: "var(--radius-sm)",
+                                        transition: "all 0.15s",
+                                        fontWeight: 600,
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        (e.currentTarget as HTMLElement).style.background = "rgba(239, 68, 68, 0.15)";
+                                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(239, 68, 68, 0.4)";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        (e.currentTarget as HTMLElement).style.background = "rgba(239, 68, 68, 0.1)";
+                                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(239, 68, 68, 0.3)";
+                                    }}
+                                >
+                                    🗑️ Clear Cache
+                                </button>
+                            </div>
+
+                            {/* Error display */}
+                            {persistenceStatus.error && (
+                                <div style={{
+                                    background: "rgba(239, 68, 68, 0.1)",
+                                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "0.75rem",
+                                    fontSize: "0.8rem",
+                                    color: "#ef4444"
+                                }}>
+                                    <strong>Error:</strong> {persistenceStatus.error}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div style={{ 
+                            textAlign: "center", 
+                            color: "var(--muted)", 
+                            fontSize: "0.85rem",
+                            padding: "1rem"
+                        }}>
+                            Loading persistence status...
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Message thread */}
             <div
