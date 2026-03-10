@@ -8,6 +8,7 @@ from core.vector_store import add_embeddings, search
 from core.pdf_loader import load_pdf
 from core.chunker import chunk_text
 from core.reranker import rerank_chunks, compress_chunks, smart_context_selection
+from core.hybrid_search import hybrid_search, get_hybrid_search_stats
 from openai import OpenAI
 
 # Set up logging
@@ -102,20 +103,28 @@ def process_pdf(file_path):
 
 def ask_question(question):
     """
-    Enhanced RAG pipeline with reranking and compression
-    Query → Vector search (top 10) → Rerank → Select best 3 → Send to LLM
+    Enhanced RAG pipeline with hybrid retrieval, reranking and compression
+    Query → Hybrid Search (vector + keyword) → Rerank → Select best 3 → Send to LLM
     """
-    logger.info(f"Processing question with enhanced pipeline: {question}")
+    logger.info(f"Processing question with hybrid pipeline: {question}")
     
-    # Step 1: Get query embedding
-    query_embedding = get_embedding(question)
+    # Step 1: Hybrid search (vector + keyword)
+    initial_chunks = hybrid_search(
+        query=question,
+        vector_k=8,      # Slightly fewer from each method
+        keyword_k=8,     # to get diverse results
+        vector_weight=0.6,
+        keyword_weight=0.4
+    )
     
-    # Step 2: Vector search for top 10 candidates
-    initial_chunks = search(query_embedding, k=10)
-    logger.info(f"Initial vector search found {len(initial_chunks)} chunks")
+    hybrid_stats = get_hybrid_search_stats(initial_chunks)
+    logger.info(f"Hybrid search stats: {hybrid_stats}")
     
     if not initial_chunks:
         return "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
+    
+    # Step 2: Get query embedding for reranking
+    query_embedding = get_embedding(question)
     
     # Step 3: Rerank chunks using cosine similarity
     reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=3)
@@ -131,7 +140,7 @@ def ask_question(question):
     context = "\n\n".join([chunk["text"] for chunk in final_chunks])
     
     prompt = f"""
-Answer the question using the context below. The context has been carefully selected and ranked for relevance.
+Answer the question using the context below. The context has been selected using hybrid search (vector + keyword matching) and carefully ranked for relevance.
 
 Context:
 {context}
@@ -148,25 +157,31 @@ Question:
         ]
     )
     
-    logger.info(f"Enhanced pipeline complete. Used {len(final_chunks)} chunks in final context")
+    logger.info(f"Hybrid pipeline complete. Used {len(final_chunks)} chunks in final context")
     
     return response.choices[0].message.content
 
 async def ask_question_stream(question):
     """
-    Enhanced streaming RAG pipeline with reranking and compression
+    Enhanced streaming RAG pipeline with hybrid retrieval, reranking and compression
     """
-    logger.info(f"Processing streaming question with enhanced pipeline: {question}")
+    logger.info(f"Processing streaming question with hybrid pipeline: {question}")
     
-    # Step 1: Get query embedding
-    query_embedding = get_embedding(question)
-    
-    # Step 2: Vector search for top 10 candidates
-    initial_chunks = search(query_embedding, k=10)
+    # Step 1: Hybrid search (vector + keyword)
+    initial_chunks = hybrid_search(
+        query=question,
+        vector_k=8,
+        keyword_k=8,
+        vector_weight=0.6,
+        keyword_weight=0.4
+    )
     
     if not initial_chunks:
         yield "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
         return
+    
+    # Step 2: Get query embedding for reranking
+    query_embedding = get_embedding(question)
     
     # Step 3: Rerank chunks using cosine similarity
     reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=3)
@@ -181,7 +196,7 @@ async def ask_question_stream(question):
     context = "\n\n".join([chunk["text"] for chunk in final_chunks])
     
     prompt = f"""
-Answer the question using the context below. The context has been carefully selected and ranked for relevance.
+Answer the question using the context below. The context has been selected using hybrid search (vector + keyword matching) and carefully ranked for relevance.
 
 Context:
 {context}
@@ -206,20 +221,25 @@ Question:
     
 def ask_question_stream_with_sources(question):
     """
-    Enhanced streaming RAG pipeline with sources, reranking and compression
-    Query → Vector search (top 10) → Rerank → Select best 3 → Send to LLM
+    Hybrid RAG pipeline with sources, reranking and compression
+    Query → Hybrid Search (vector + keyword) → Rerank → Select best 3-5 → Send to LLM
     """
     import time
     start_time = time.time()
     
-    logger.info(f"Processing streaming question with enhanced pipeline: {question}")
+    logger.info(f"Processing streaming question with hybrid pipeline: {question}")
     
-    # Step 1: Get query embedding
-    query_embedding = get_embedding(question)
+    # Step 1: Hybrid search (vector + keyword)
+    initial_chunks = hybrid_search(
+        query=question,
+        vector_k=8,      # 8 from vector search
+        keyword_k=8,     # 8 from keyword search
+        vector_weight=0.6,
+        keyword_weight=0.4
+    )
     
-    # Step 2: Vector search for top 10 candidates
-    initial_chunks = search(query_embedding, k=10)
-    logger.info(f"Initial vector search found {len(initial_chunks)} chunks")
+    hybrid_stats = get_hybrid_search_stats(initial_chunks)
+    logger.info(f"Hybrid search stats: {hybrid_stats}")
     
     if not initial_chunks:
         logger.warning("No context chunks found")
@@ -228,6 +248,7 @@ def ask_question_stream_with_sources(question):
             "sources": [],
             "metadata": {
                 "chunks_found": 0,
+                "hybrid_stats": {"total": 0},
                 "initial_chunks": 0,
                 "reranked_chunks": 0,
                 "final_chunks": 0,
@@ -238,6 +259,9 @@ def ask_question_stream_with_sources(question):
             }
         }
         return
+    
+    # Step 2: Get query embedding for reranking
+    query_embedding = get_embedding(question)
     
     # Step 3: Rerank chunks using cosine similarity
     reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=5)
@@ -254,7 +278,7 @@ def ask_question_stream_with_sources(question):
     context = "\n\n".join([chunk["text"] for chunk in final_chunks])
     
     prompt = f"""
-Answer the question using the context below. The context has been carefully selected and ranked for relevance.
+Answer the question using the context below. The context has been selected using hybrid search (vector + keyword matching) and carefully ranked for relevance.
 
 Context:
 {context}
@@ -273,7 +297,7 @@ Question:
         stream_options={"include_usage": True}
     )
     
-    # Prepare sources from final chunks (show reranking scores)
+    # Prepare sources from final chunks with hybrid search metadata
     sources = []
     for chunk in final_chunks:
         source_text = chunk["text"][:150] + "..." if len(chunk["text"]) > 150 else chunk["text"]
@@ -283,6 +307,18 @@ Question:
             "page": chunk["page"],
             "text": source_text
         }
+        
+        # Add hybrid search information
+        if chunk.get("search_types"):
+            source["search_types"] = chunk["search_types"]
+        if chunk.get("hybrid_score"):
+            source["hybrid_score"] = round(chunk["hybrid_score"], 3)
+        if chunk.get("vector_score"):
+            source["vector_score"] = round(chunk["vector_score"], 3)
+        if chunk.get("keyword_score"):
+            source["keyword_score"] = round(chunk["keyword_score"], 3)
+        if chunk.get("matched_terms"):
+            source["matched_terms"] = chunk["matched_terms"]
         
         # Add reranking information if available
         if chunk.get("reranked"):
@@ -295,11 +331,12 @@ Question:
         
         sources.append(source)
     
-    logger.info(f"Prepared {len(sources)} sources with enhanced metadata")
+    logger.info(f"Prepared {len(sources)} sources with hybrid metadata")
     
-    # Track usage information
+    # Track usage information with hybrid stats
     usage_info = {
         "chunks_found": len(initial_chunks),
+        "hybrid_stats": hybrid_stats,
         "initial_chunks": len(initial_chunks),
         "reranked_chunks": len(reranked_chunks),
         "final_chunks": len(final_chunks),
@@ -307,7 +344,7 @@ Question:
         "completion_tokens": 0,
         "total_tokens": 0,
         "latency": 0,
-        "pipeline_version": "enhanced_v1"
+        "pipeline_version": "hybrid_v1"
     }
     
     # Stream the answer with enhanced metadata
@@ -333,8 +370,11 @@ Question:
                 "latency": final_latency
             })
             
-            logger.info(f"Enhanced pipeline complete:")
-            logger.info(f"  Initial chunks: {len(initial_chunks)}")
+            logger.info(f"Hybrid pipeline complete:")
+            logger.info(f"  Initial chunks: {len(initial_chunks)} (hybrid)")
+            logger.info(f"  Vector only: {hybrid_stats.get('vector_only', 0)}")
+            logger.info(f"  Keyword only: {hybrid_stats.get('keyword_only', 0)}")
+            logger.info(f"  Both methods: {hybrid_stats.get('both_methods', 0)}")
             logger.info(f"  Reranked chunks: {len(reranked_chunks)}")
             logger.info(f"  Final chunks: {len(final_chunks)}")
             logger.info(f"  Prompt tokens: {chunk.usage.prompt_tokens}")

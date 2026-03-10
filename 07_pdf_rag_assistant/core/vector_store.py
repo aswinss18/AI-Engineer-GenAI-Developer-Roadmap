@@ -2,7 +2,7 @@ import faiss
 import numpy as np
 import logging
 from .persistence_manager import PersistenceManager
-from .keyword_search import keyword_search
+from .keyword_search import keyword_search, build_keyword_index
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,13 @@ def add_embeddings(chunks, embeddings):
     index.add(vectors)
 
     documents.extend(chunks)
+    
+    # Build keyword search index after adding documents
+    try:
+        build_keyword_index(documents)
+        logger.info(f"Built keyword index for {len(documents)} total documents")
+    except Exception as e:
+        logger.error(f"Failed to build keyword index: {e}")
     
     # Trigger incremental save after adding embeddings (Requirements 5.1, 5.2)
     try:
@@ -105,6 +112,14 @@ def load_persisted_state():
         index = loaded_index
         documents.clear()
         documents.extend(loaded_chunks)
+        
+        # Rebuild keyword search index
+        if documents:
+            try:
+                build_keyword_index(documents)
+                logger.info(f"Rebuilt keyword index for {len(documents)} documents")
+            except Exception as e:
+                logger.error(f"Failed to rebuild keyword index: {e}")
         
         # Log startup information
         document_count = metadata.get("document_count", 0)

@@ -15,12 +15,25 @@ interface Message {
         cosine_similarity?: number;
         compressed?: boolean;
         original_length?: number;
+        search_types?: string[];
+        hybrid_score?: number;
+        vector_score?: number;
+        keyword_score?: number;
+        matched_terms?: string[];
     }>;
     metadata?: {
         chunks_found: number;
         initial_chunks?: number;
         reranked_chunks?: number;
         final_chunks?: number;
+        hybrid_stats?: {
+            total: number;
+            vector_only?: number;
+            keyword_only?: number;
+            both_methods?: number;
+            avg_hybrid_score?: number;
+            top_score?: number;
+        };
         prompt_tokens: number;
         completion_tokens: number;
         total_tokens: number;
@@ -930,7 +943,8 @@ export default function PDFRagPage() {
                                                         display: "flex", 
                                                         alignItems: "center", 
                                                         gap: "0.5rem",
-                                                        marginBottom: "0.25rem"
+                                                        marginBottom: "0.25rem",
+                                                        flexWrap: "wrap"
                                                     }}>
                                                         <span style={{ 
                                                             fontWeight: 600, 
@@ -947,6 +961,44 @@ export default function PDFRagPage() {
                                                         }}>
                                                             Page {source.page}
                                                         </span>
+                                                        {source.search_types && (
+                                                            <div style={{ display: "flex", gap: "0.25rem" }}>
+                                                                {source.search_types.includes("vector") && (
+                                                                    <span style={{ 
+                                                                        fontSize: "0.65rem", 
+                                                                        color: "#3b82f6",
+                                                                        background: "rgba(59, 130, 246, 0.1)",
+                                                                        padding: "0.1rem 0.3rem",
+                                                                        borderRadius: "3px"
+                                                                    }}>
+                                                                        Vector
+                                                                    </span>
+                                                                )}
+                                                                {source.search_types.includes("keyword") && (
+                                                                    <span style={{ 
+                                                                        fontSize: "0.65rem", 
+                                                                        color: "#8b5cf6",
+                                                                        background: "rgba(139, 92, 246, 0.1)",
+                                                                        padding: "0.1rem 0.3rem",
+                                                                        borderRadius: "3px"
+                                                                    }}>
+                                                                        Keyword
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {source.hybrid_score && (
+                                                            <span style={{ 
+                                                                fontSize: "0.65rem", 
+                                                                color: "#22c55e",
+                                                                background: "rgba(34, 197, 94, 0.1)",
+                                                                padding: "0.1rem 0.3rem",
+                                                                borderRadius: "3px",
+                                                                fontWeight: 600
+                                                            }}>
+                                                                Score: {source.hybrid_score}
+                                                            </span>
+                                                        )}
                                                         {source.combined_score && (
                                                             <span style={{ 
                                                                 fontSize: "0.65rem", 
@@ -956,7 +1008,7 @@ export default function PDFRagPage() {
                                                                 borderRadius: "3px",
                                                                 fontWeight: 600
                                                             }}>
-                                                                Score: {source.combined_score}
+                                                                Final: {source.combined_score}
                                                             </span>
                                                         )}
                                                         {source.compressed && (
@@ -971,6 +1023,15 @@ export default function PDFRagPage() {
                                                             </span>
                                                         )}
                                                     </div>
+                                                    {source.matched_terms && source.matched_terms.length > 0 && (
+                                                        <div style={{ 
+                                                            fontSize: "0.65rem", 
+                                                            color: "#8b5cf6",
+                                                            marginBottom: "0.25rem"
+                                                        }}>
+                                                            Keywords: {source.matched_terms.join(", ")}
+                                                        </div>
+                                                    )}
                                                     <div style={{ 
                                                         color: "var(--muted)", 
                                                         lineHeight: 1.4,
@@ -1001,7 +1062,67 @@ export default function PDFRagPage() {
                                             gap: "0.5rem"
                                         }}>
                                             📊 Usage Metrics
+                                            {msg.metadata.pipeline_version === "hybrid_v1" && (
+                                                <span style={{
+                                                    fontSize: "0.65rem",
+                                                    background: "rgba(139, 92, 246, 0.1)",
+                                                    color: "#8b5cf6",
+                                                    padding: "0.1rem 0.4rem",
+                                                    borderRadius: "4px",
+                                                    fontWeight: 600
+                                                }}>
+                                                    Hybrid Search
+                                                </span>
+                                            )}
                                         </div>
+                                        
+                                        {/* Hybrid Search Stats */}
+                                        {msg.metadata.hybrid_stats && (
+                                            <div style={{ 
+                                                display: "grid", 
+                                                gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", 
+                                                gap: "0.5rem",
+                                                fontSize: "0.7rem",
+                                                marginBottom: "0.75rem"
+                                            }}>
+                                                <div style={{
+                                                    background: "rgba(59, 130, 246, 0.1)",
+                                                    border: "1px solid rgba(59, 130, 246, 0.2)",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    padding: "0.3rem 0.5rem",
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "#3b82f6", fontWeight: 600 }}>
+                                                        {msg.metadata.hybrid_stats.vector_only || 0}
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)", fontSize: "0.65rem" }}>Vector Only</div>
+                                                </div>
+                                                <div style={{
+                                                    background: "rgba(139, 92, 246, 0.1)",
+                                                    border: "1px solid rgba(139, 92, 246, 0.2)",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    padding: "0.3rem 0.5rem",
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "#8b5cf6", fontWeight: 600 }}>
+                                                        {msg.metadata.hybrid_stats.keyword_only || 0}
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)", fontSize: "0.65rem" }}>Keyword Only</div>
+                                                </div>
+                                                <div style={{
+                                                    background: "rgba(34, 197, 94, 0.1)",
+                                                    border: "1px solid rgba(34, 197, 94, 0.2)",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    padding: "0.3rem 0.5rem",
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "#22c55e", fontWeight: 600 }}>
+                                                        {msg.metadata.hybrid_stats.both_methods || 0}
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)", fontSize: "0.65rem" }}>Both Methods</div>
+                                                </div>
+                                            </div>
+                                        )}
                                         <div style={{ 
                                             display: "grid", 
                                             gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", 
@@ -1084,14 +1205,22 @@ export default function PDFRagPage() {
                                             </div>
                                             {msg.metadata.pipeline_version && (
                                                 <div style={{
-                                                    background: "rgba(34, 197, 94, 0.1)",
-                                                    border: "1px solid rgba(34, 197, 94, 0.3)",
+                                                    background: msg.metadata.pipeline_version === "hybrid_v1" 
+                                                        ? "rgba(139, 92, 246, 0.1)" 
+                                                        : "rgba(34, 197, 94, 0.1)",
+                                                    border: msg.metadata.pipeline_version === "hybrid_v1"
+                                                        ? "1px solid rgba(139, 92, 246, 0.3)"
+                                                        : "1px solid rgba(34, 197, 94, 0.3)",
                                                     borderRadius: "var(--radius-sm)",
                                                     padding: "0.4rem 0.6rem",
                                                     textAlign: "center"
                                                 }}>
-                                                    <div style={{ color: "#22c55e", fontWeight: 600, fontSize: "0.7rem" }}>
-                                                        Enhanced
+                                                    <div style={{ 
+                                                        color: msg.metadata.pipeline_version === "hybrid_v1" ? "#8b5cf6" : "#22c55e", 
+                                                        fontWeight: 600, 
+                                                        fontSize: "0.7rem" 
+                                                    }}>
+                                                        {msg.metadata.pipeline_version === "hybrid_v1" ? "Hybrid" : "Enhanced"}
                                                     </div>
                                                     <div style={{ color: "var(--muted)" }}>Pipeline</div>
                                                 </div>
