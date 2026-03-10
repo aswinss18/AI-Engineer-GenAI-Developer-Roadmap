@@ -2,6 +2,7 @@ import faiss
 import numpy as np
 import logging
 from .persistence_manager import PersistenceManager
+from .keyword_search import keyword_search
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,21 @@ def search(query_embedding, k=10):
             })
     
     return results
+
+
+def hybrid_search(query):
+
+    query_embedding = get_embedding(query)
+
+    vector_results = vector_search(query_embedding, k=10)
+
+    keyword_indices = keyword_search(query, k=10)
+
+    keyword_results = [documents[i] for i in keyword_indices]
+
+    combined = vector_results + keyword_results
+
+    return combined
 
 def load_persisted_state():
     """Load persisted state on startup (Requirements 4.1, 4.2, 4.3, 4.4)"""
