@@ -77,7 +77,7 @@ class KeywordSearcher:
                 # TF-IDF score
                 score += tf * idf
         
-        return score
+        return float(score)  # Ensure Python float
     
     def search(self, query: str, k: int = 10) -> List[Dict[str, Any]]:
         """
@@ -118,7 +118,7 @@ class KeywordSearcher:
             if score > 0:
                 doc_copy = self.documents[doc_idx].copy()
                 doc_copy.update({
-                    "keyword_score": score,
+                    "keyword_score": float(score),  # Ensure Python float
                     "search_type": "keyword",
                     "matched_terms": [term for term in query_terms 
                                     if term in self.documents[doc_idx].get("text", "").lower()]

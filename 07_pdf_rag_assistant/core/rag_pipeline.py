@@ -9,6 +9,13 @@ from core.pdf_loader import load_pdf
 from core.chunker import chunk_text
 from core.reranker import rerank_chunks, compress_chunks, smart_context_selection
 from core.hybrid_search import hybrid_search, get_hybrid_search_stats
+from core.multi_document_context import (
+    group_chunks_by_document, 
+    build_multi_document_context, 
+    create_comparison_prompt,
+    analyze_document_distribution,
+    extract_document_insights
+)
 from openai import OpenAI
 
 # Set up logging
@@ -103,16 +110,16 @@ def process_pdf(file_path):
 
 def ask_question(question):
     """
-    Enhanced RAG pipeline with hybrid retrieval, reranking and compression
-    Query → Hybrid Search (vector + keyword) → Rerank → Select best 3 → Send to LLM
+    Multi-Document Hybrid RAG pipeline with cross-document analysis
+    Query → Hybrid Search → Group by Document → Rerank → Multi-Doc Context → LLM
     """
-    logger.info(f"Processing question with hybrid pipeline: {question}")
+    logger.info(f"Processing question with multi-document hybrid pipeline: {question}")
     
     # Step 1: Hybrid search (vector + keyword)
     initial_chunks = hybrid_search(
         query=question,
-        vector_k=8,      # Slightly fewer from each method
-        keyword_k=8,     # to get diverse results
+        vector_k=10,     # Increased for multi-document coverage
+        keyword_k=10,    # Increased for multi-document coverage
         vector_weight=0.6,
         keyword_weight=0.4
     )
@@ -123,31 +130,25 @@ def ask_question(question):
     if not initial_chunks:
         return "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
     
-    # Step 2: Get query embedding for reranking
+    # Step 2: Group chunks by document
+    grouped_chunks = group_chunks_by_document(initial_chunks)
+    document_analysis = analyze_document_distribution(grouped_chunks)
+    
+    # Step 3: Get query embedding for reranking
     query_embedding = get_embedding(question)
     
-    # Step 3: Rerank chunks using cosine similarity
-    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=3)
+    # Step 4: Rerank chunks using cosine similarity
+    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=8)
     logger.info(f"Reranked to top {len(reranked_chunks)} chunks")
     
-    # Step 4: Compress chunks if needed
-    compressed_chunks = compress_chunks(reranked_chunks, max_chunk_length=600)
+    # Step 5: Group reranked chunks by document
+    reranked_grouped = group_chunks_by_document(reranked_chunks)
     
-    # Step 5: Smart context selection
-    final_chunks = smart_context_selection(compressed_chunks, max_context_length=2000)
+    # Step 6: Build multi-document context
+    context, context_metadata = build_multi_document_context(reranked_grouped, max_context_length=3000)
     
-    # Build context from final chunks
-    context = "\n\n".join([chunk["text"] for chunk in final_chunks])
-    
-    prompt = f"""
-Answer the question using the context below. The context has been selected using hybrid search (vector + keyword matching) and carefully ranked for relevance.
-
-Context:
-{context}
-
-Question:
-{question}
-"""
+    # Step 7: Create specialized prompt
+    prompt = create_comparison_prompt(context, question, context_metadata)
     
     client = get_client()
     response = client.chat.completions.create(
@@ -157,7 +158,7 @@ Question:
         ]
     )
     
-    logger.info(f"Hybrid pipeline complete. Used {len(final_chunks)} chunks in final context")
+    logger.info(f"Multi-document pipeline complete. Documents: {document_analysis['document_count']}, Multi-doc: {document_analysis['multi_document']}")
     
     return response.choices[0].message.content
 
@@ -221,19 +222,19 @@ Question:
     
 def ask_question_stream_with_sources(question):
     """
-    Hybrid RAG pipeline with sources, reranking and compression
-    Query → Hybrid Search (vector + keyword) → Rerank → Select best 3-5 → Send to LLM
+    Multi-Document Hybrid RAG pipeline with cross-document analysis
+    Query → Hybrid Search → Group by Document → Rerank → Multi-Doc Context → LLM
     """
     import time
     start_time = time.time()
     
-    logger.info(f"Processing streaming question with hybrid pipeline: {question}")
+    logger.info(f"Processing question with multi-document hybrid pipeline: {question}")
     
     # Step 1: Hybrid search (vector + keyword)
     initial_chunks = hybrid_search(
         query=question,
-        vector_k=8,      # 8 from vector search
-        keyword_k=8,     # 8 from keyword search
+        vector_k=10,     # Increased for multi-document coverage
+        keyword_k=10,    # Increased for multi-document coverage
         vector_weight=0.6,
         keyword_weight=0.4
     )
@@ -249,6 +250,7 @@ def ask_question_stream_with_sources(question):
             "metadata": {
                 "chunks_found": 0,
                 "hybrid_stats": {"total": 0},
+                "document_analysis": {"documents": 0, "multi_document": False},
                 "initial_chunks": 0,
                 "reranked_chunks": 0,
                 "final_chunks": 0,
@@ -260,32 +262,33 @@ def ask_question_stream_with_sources(question):
         }
         return
     
-    # Step 2: Get query embedding for reranking
+    # Step 2: Group chunks by document for multi-document analysis
+    grouped_chunks = group_chunks_by_document(initial_chunks)
+    document_analysis = analyze_document_distribution(grouped_chunks)
+    document_insights = extract_document_insights(grouped_chunks)
+    
+    logger.info(f"Document analysis: {document_analysis['document_count']} documents, multi-doc: {document_analysis['multi_document']}")
+    
+    # Step 3: Get query embedding for reranking
     query_embedding = get_embedding(question)
     
-    # Step 3: Rerank chunks using cosine similarity
-    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=5)
+    # Step 4: Rerank chunks using cosine similarity (increased for multi-doc)
+    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=8)
     logger.info(f"Reranked to top {len(reranked_chunks)} chunks")
     
-    # Step 4: Compress chunks if needed
-    compressed_chunks = compress_chunks(reranked_chunks, max_chunk_length=600)
+    # Step 5: Group reranked chunks by document
+    reranked_grouped = group_chunks_by_document(reranked_chunks)
     
-    # Step 5: Smart context selection
-    final_chunks = smart_context_selection(compressed_chunks, max_context_length=2500)
-    logger.info(f"Final context selection: {len(final_chunks)} chunks")
+    # Step 6: Build multi-document context with document boundaries
+    context, context_metadata = build_multi_document_context(
+        reranked_grouped, 
+        max_context_length=3500  # Increased for multi-document analysis
+    )
     
-    # Build context from final chunks
-    context = "\n\n".join([chunk["text"] for chunk in final_chunks])
+    logger.info(f"Multi-document context: {context_metadata}")
     
-    prompt = f"""
-Answer the question using the context below. The context has been selected using hybrid search (vector + keyword matching) and carefully ranked for relevance.
-
-Context:
-{context}
-
-Question:
-{question}
-"""
+    # Step 7: Create specialized prompt for multi-document reasoning
+    prompt = create_comparison_prompt(context, question, context_metadata)
     
     client = get_client()
     response = client.chat.completions.create(
@@ -297,9 +300,9 @@ Question:
         stream_options={"include_usage": True}
     )
     
-    # Prepare sources from final chunks with hybrid search metadata
+    # Prepare sources with multi-document metadata
     sources = []
-    for chunk in final_chunks:
+    for chunk in reranked_chunks[:context_metadata.get("total_chunks", 10)]:
         source_text = chunk["text"][:150] + "..." if len(chunk["text"]) > 150 else chunk["text"]
         
         source = {
@@ -320,34 +323,39 @@ Question:
         if chunk.get("matched_terms"):
             source["matched_terms"] = chunk["matched_terms"]
         
-        # Add reranking information if available
+        # Add reranking information
         if chunk.get("reranked"):
             source["cosine_similarity"] = round(chunk.get("cosine_similarity", 0), 3)
             source["combined_score"] = round(chunk.get("combined_score", 0), 3)
         
-        if chunk.get("compressed"):
-            source["compressed"] = True
-            source["original_length"] = chunk.get("original_length", 0)
+        # Add document-specific metadata
+        doc_stats = document_analysis["document_stats"].get(chunk["doc"], {})
+        if doc_stats:
+            source["doc_coverage"] = doc_stats.get("coverage_percentage", 0)
+            source["doc_avg_score"] = doc_stats.get("avg_hybrid_score", 0)
         
         sources.append(source)
     
-    logger.info(f"Prepared {len(sources)} sources with hybrid metadata")
+    logger.info(f"Prepared {len(sources)} sources with multi-document metadata")
     
-    # Track usage information with hybrid stats
+    # Track usage information with multi-document stats
     usage_info = {
         "chunks_found": len(initial_chunks),
         "hybrid_stats": hybrid_stats,
+        "document_analysis": document_analysis,
+        "document_insights": document_insights,
+        "context_metadata": context_metadata,
         "initial_chunks": len(initial_chunks),
         "reranked_chunks": len(reranked_chunks),
-        "final_chunks": len(final_chunks),
+        "final_chunks": context_metadata.get("total_chunks", 0),
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
         "latency": 0,
-        "pipeline_version": "hybrid_v1"
+        "pipeline_version": "multi_doc_hybrid_v1"
     }
     
-    # Stream the answer with enhanced metadata
+    # Stream the answer with multi-document metadata
     for chunk in response:
         if chunk.choices and len(chunk.choices) > 0:
             if chunk.choices[0].delta.content is not None:
@@ -370,13 +378,16 @@ Question:
                 "latency": final_latency
             })
             
-            logger.info(f"Hybrid pipeline complete:")
+            logger.info(f"Multi-document hybrid pipeline complete:")
+            logger.info(f"  Documents analyzed: {document_analysis['document_count']}")
+            logger.info(f"  Multi-document mode: {document_analysis['multi_document']}")
             logger.info(f"  Initial chunks: {len(initial_chunks)} (hybrid)")
             logger.info(f"  Vector only: {hybrid_stats.get('vector_only', 0)}")
             logger.info(f"  Keyword only: {hybrid_stats.get('keyword_only', 0)}")
             logger.info(f"  Both methods: {hybrid_stats.get('both_methods', 0)}")
             logger.info(f"  Reranked chunks: {len(reranked_chunks)}")
-            logger.info(f"  Final chunks: {len(final_chunks)}")
+            logger.info(f"  Final chunks: {context_metadata.get('total_chunks', 0)}")
+            logger.info(f"  Context length: {context_metadata.get('context_length', 0)} chars")
             logger.info(f"  Prompt tokens: {chunk.usage.prompt_tokens}")
             logger.info(f"  Completion tokens: {chunk.usage.completion_tokens}")
             logger.info(f"  Total tokens: {chunk.usage.total_tokens}")

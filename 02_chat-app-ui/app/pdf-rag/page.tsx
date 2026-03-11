@@ -20,6 +20,8 @@ interface Message {
         vector_score?: number;
         keyword_score?: number;
         matched_terms?: string[];
+        doc_coverage?: number;
+        doc_avg_score?: number;
     }>;
     metadata?: {
         chunks_found: number;
@@ -33,6 +35,25 @@ interface Message {
             both_methods?: number;
             avg_hybrid_score?: number;
             top_score?: number;
+        };
+        document_analysis?: {
+            document_count: number;
+            multi_document: boolean;
+            total_chunks: number;
+            document_stats?: Record<string, {
+                chunk_count: number;
+                coverage_percentage: number;
+                page_range: string;
+                avg_hybrid_score: number;
+                search_types: string[];
+            }>;
+        };
+        context_metadata?: {
+            documents: number;
+            total_chunks: number;
+            context_length: number;
+            multi_document_analysis: boolean;
+            included_documents?: Record<string, any>;
         };
         prompt_tokens: number;
         completion_tokens: number;
@@ -76,26 +97,25 @@ export default function PDFRagPage() {
         }
     };
 
-    const clearPersistence = async () => {
+    const clearAllDocuments = async () => {
         try {
-            const res = await fetch('http://localhost:8000/persistence/clear', {
+            const res = await fetch('http://localhost:8000/documents/clear', {
                 method: 'POST'
             });
             if (res.ok) {
                 const data = await res.json();
-                setPersistenceStatus(null);
                 setMessages([{ 
                     role: "ai", 
-                    content: `✅ ${data.message}\n\nAll cached documents and embeddings have been cleared. You can upload a new PDF to start fresh.` 
+                    content: `✅ ${data.message}\n\nAll documents have been cleared. You can now upload new PDFs to start fresh.` 
                 }]);
-                // Refresh status
+                // Refresh persistence status
                 setTimeout(checkPersistenceStatus, 1000);
             }
         } catch (error) {
-            console.error('Clear persistence error:', error);
+            console.error('Clear documents error:', error);
             setMessages([{ 
                 role: "ai", 
-                content: "❌ Error clearing persistence. Please check if the backend is running." 
+                content: "❌ Error clearing documents. Please check if the backend is running." 
             }]);
         }
     };
@@ -200,6 +220,19 @@ export default function PDFRagPage() {
                 if (data.documents_loaded > 0) {
                     setProcessingDoc(false);
                     setProcessingStatus("");
+                    
+                    // Show multi-document status if applicable
+                    if (data.multi_document_mode && data.unique_documents > 1) {
+                        setMessages([{ 
+                            role: "ai", 
+                            content: `✅ PDF processed successfully!\n\n🔄 Multi-Document Mode Active!\n\nYou now have ${data.unique_documents} documents loaded:\n${data.document_names.map((name: string) => `• ${name}`).join('\n')}\n\nYou can ask questions that compare or synthesize information across all documents.` 
+                        }]);
+                    } else {
+                        setMessages([{ 
+                            role: "ai", 
+                            content: `✅ PDF processed successfully!\n\nYour document is now ready for questions. You can ask anything about the content.` 
+                        }]);
+                    }
                     return true; // Processing complete
                 } else {
                     setProcessingStatus(`Processing document... (${data.documents_loaded} chunks loaded)`);
@@ -367,11 +400,12 @@ export default function PDFRagPage() {
                         }}
                     >
                         <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1rem" }}>
-                            📚 Upload Your PDF Document
+                            📚 Upload Your PDF Documents
                         </h2>
                         <p style={{ color: "var(--muted)", marginBottom: "1.5rem", lineHeight: 1.6 }}>
-                            Upload a PDF file to start chatting with it. The document will be processed using advanced 
-                            RAG (Retrieval-Augmented Generation) techniques with FAISS vector search and OpenAI embeddings.
+                            Upload PDF files to start chatting with them. You can upload multiple documents for cross-document 
+                            analysis and comparison. The documents will be processed using advanced RAG (Retrieval-Augmented Generation) 
+                            techniques with FAISS vector search and OpenAI embeddings.
                         </p>
                         
                         {/* File Upload */}
@@ -556,13 +590,13 @@ export default function PDFRagPage() {
                     {processingDoc ? "Processing…" : loading ? "Thinking…" : "Ready"}
                 </div>
 
-                {/* Upload new document button */}
+                {/* Add PDF button */}
                 <button
                     onClick={() => {
                         setDocumentUploaded(false);
                         setProcessingDoc(false);
                         setProcessingStatus("");
-                        setMessages([]);
+                        // Don't clear messages - preserve chat history for multi-document
                     }}
                     style={{
                         background: "rgba(225, 29, 72, 0.1)",
@@ -584,7 +618,7 @@ export default function PDFRagPage() {
                         (e.currentTarget as HTMLElement).style.borderColor = "rgba(225, 29, 72, 0.3)";
                     }}
                 >
-                    📄 New PDF
+                    📄 Add PDF
                 </button>
 
                 {/* Persistence status button */}
@@ -737,7 +771,7 @@ export default function PDFRagPage() {
                             {/* Actions */}
                             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
                                 <button
-                                    onClick={clearPersistence}
+                                    onClick={clearAllDocuments}
                                     style={{
                                         background: "rgba(239, 68, 68, 0.1)",
                                         border: "1px solid rgba(239, 68, 68, 0.3)",
@@ -758,7 +792,7 @@ export default function PDFRagPage() {
                                         (e.currentTarget as HTMLElement).style.borderColor = "rgba(239, 68, 68, 0.3)";
                                     }}
                                 >
-                                    🗑️ Clear Cache
+                                    🗑️ Clear All Documents
                                 </button>
                             </div>
 
@@ -961,6 +995,17 @@ export default function PDFRagPage() {
                                                         }}>
                                                             Page {source.page}
                                                         </span>
+                                                        {source.doc_coverage && (
+                                                            <span style={{ 
+                                                                fontSize: "0.65rem", 
+                                                                color: "#f59e0b",
+                                                                background: "rgba(245, 158, 11, 0.1)",
+                                                                padding: "0.1rem 0.3rem",
+                                                                borderRadius: "3px"
+                                                            }}>
+                                                                {source.doc_coverage}% coverage
+                                                            </span>
+                                                        )}
                                                         {source.search_types && (
                                                             <div style={{ display: "flex", gap: "0.25rem" }}>
                                                                 {source.search_types.includes("vector") && (
@@ -1062,6 +1107,18 @@ export default function PDFRagPage() {
                                             gap: "0.5rem"
                                         }}>
                                             📊 Usage Metrics
+                                            {msg.metadata.pipeline_version === "multi_doc_hybrid_v1" && (
+                                                <span style={{
+                                                    fontSize: "0.65rem",
+                                                    background: "rgba(34, 197, 94, 0.1)",
+                                                    color: "#22c55e",
+                                                    padding: "0.1rem 0.4rem",
+                                                    borderRadius: "4px",
+                                                    fontWeight: 600
+                                                }}>
+                                                    Multi-Document
+                                                </span>
+                                            )}
                                             {msg.metadata.pipeline_version === "hybrid_v1" && (
                                                 <span style={{
                                                     fontSize: "0.65rem",
@@ -1075,6 +1132,46 @@ export default function PDFRagPage() {
                                                 </span>
                                             )}
                                         </div>
+                                        
+                                        {/* Multi-Document Analysis */}
+                                        {msg.metadata.document_analysis && msg.metadata.document_analysis.multi_document && (
+                                            <div style={{ 
+                                                display: "grid", 
+                                                gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", 
+                                                gap: "0.5rem",
+                                                fontSize: "0.7rem",
+                                                marginBottom: "0.75rem",
+                                                padding: "0.5rem",
+                                                background: "rgba(34, 197, 94, 0.05)",
+                                                borderRadius: "var(--radius-sm)",
+                                                border: "1px solid rgba(34, 197, 94, 0.1)"
+                                            }}>
+                                                <div style={{
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "#22c55e", fontWeight: 600 }}>
+                                                        {msg.metadata.document_analysis.document_count}
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)", fontSize: "0.65rem" }}>Documents</div>
+                                                </div>
+                                                <div style={{
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "#22c55e", fontWeight: 600 }}>
+                                                        {msg.metadata.context_metadata?.context_length || 0}
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)", fontSize: "0.65rem" }}>Context Chars</div>
+                                                </div>
+                                                <div style={{
+                                                    textAlign: "center"
+                                                }}>
+                                                    <div style={{ color: "#22c55e", fontWeight: 600 }}>
+                                                        Cross-Doc
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)", fontSize: "0.65rem" }}>Analysis</div>
+                                                </div>
+                                            </div>
+                                        )}
                                         
                                         {/* Hybrid Search Stats */}
                                         {msg.metadata.hybrid_stats && (
@@ -1205,10 +1302,14 @@ export default function PDFRagPage() {
                                             </div>
                                             {msg.metadata.pipeline_version && (
                                                 <div style={{
-                                                    background: msg.metadata.pipeline_version === "hybrid_v1" 
+                                                    background: msg.metadata.pipeline_version === "multi_doc_hybrid_v1" 
+                                                        ? "rgba(34, 197, 94, 0.1)" 
+                                                        : msg.metadata.pipeline_version === "hybrid_v1"
                                                         ? "rgba(139, 92, 246, 0.1)" 
                                                         : "rgba(34, 197, 94, 0.1)",
-                                                    border: msg.metadata.pipeline_version === "hybrid_v1"
+                                                    border: msg.metadata.pipeline_version === "multi_doc_hybrid_v1"
+                                                        ? "1px solid rgba(34, 197, 94, 0.3)"
+                                                        : msg.metadata.pipeline_version === "hybrid_v1"
                                                         ? "1px solid rgba(139, 92, 246, 0.3)"
                                                         : "1px solid rgba(34, 197, 94, 0.3)",
                                                     borderRadius: "var(--radius-sm)",
@@ -1216,11 +1317,19 @@ export default function PDFRagPage() {
                                                     textAlign: "center"
                                                 }}>
                                                     <div style={{ 
-                                                        color: msg.metadata.pipeline_version === "hybrid_v1" ? "#8b5cf6" : "#22c55e", 
+                                                        color: msg.metadata.pipeline_version === "multi_doc_hybrid_v1" 
+                                                            ? "#22c55e" 
+                                                            : msg.metadata.pipeline_version === "hybrid_v1" 
+                                                            ? "#8b5cf6" 
+                                                            : "#22c55e", 
                                                         fontWeight: 600, 
                                                         fontSize: "0.7rem" 
                                                     }}>
-                                                        {msg.metadata.pipeline_version === "hybrid_v1" ? "Hybrid" : "Enhanced"}
+                                                        {msg.metadata.pipeline_version === "multi_doc_hybrid_v1" 
+                                                            ? "Multi-Doc" 
+                                                            : msg.metadata.pipeline_version === "hybrid_v1" 
+                                                            ? "Hybrid" 
+                                                            : "Enhanced"}
                                                     </div>
                                                     <div style={{ color: "var(--muted)" }}>Pipeline</div>
                                                 </div>

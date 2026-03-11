@@ -47,8 +47,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
-    # Clear previous documents
-    clear_documents()
+    # Don't clear previous documents - support multi-document upload
+    # clear_documents()  # Commented out to enable multi-document support
     
     path = UPLOAD_DIR + file.filename
 
@@ -57,7 +57,7 @@ async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(process_pdf, path)
 
-    return {"message": "PDF upload started, processing in background"}
+    return {"message": f"PDF '{file.filename}' upload started, processing in background. Previous documents will be preserved for multi-document analysis."}
     
 
 @app.post("/ask")
@@ -80,10 +80,19 @@ def clear_cache():
 @app.get("/status")
 def get_status():
     cache_files = len([f for f in os.listdir("cache/") if f.endswith('.json')]) if os.path.exists("cache/") else 0
+    
+    # Count unique documents
+    unique_docs = set()
+    for chunk in documents:
+        unique_docs.add(chunk.get("doc", "unknown"))
+    
     return {
         "documents_loaded": len(documents),
+        "unique_documents": len(unique_docs),
+        "document_names": list(unique_docs),
         "cached_files": cache_files,
-        "status": "ready" if len(documents) > 0 else "no_documents"
+        "status": "ready" if len(documents) > 0 else "no_documents",
+        "multi_document_mode": len(unique_docs) > 1
     }
 
 @app.get("/persistence/status")
@@ -104,23 +113,54 @@ def get_persistence_status_endpoint():
             "loaded_document_count": len(documents),
             "validation_status": "error"
         }
-@app.post("/persistence/clear")
-def clear_persistence():
-    """Clear all persisted state while preserving cache system"""
+@app.post("/documents/clear")
+def clear_all_documents():
+    """Clear all uploaded documents and start fresh"""
     try:
-        # Clear all persisted data and reset to empty state
         clear_documents()
-
         return {
-            "message": "Persisted state cleared successfully",
+            "message": "All documents cleared successfully",
             "documents_loaded": len(documents),
             "status": "empty"
         }
     except Exception as e:
         return {
-            "error": f"Failed to clear persisted state: {str(e)}",
+            "error": f"Failed to clear documents: {str(e)}",
             "documents_loaded": len(documents),
             "status": "error"
+        }
+
+@app.get("/documents/list")
+def list_documents():
+    """List all currently loaded documents"""
+    try:
+        # Group documents by source
+        doc_info = {}
+        for chunk in documents:
+            doc_name = chunk.get("doc", "unknown")
+            if doc_name not in doc_info:
+                doc_info[doc_name] = {
+                    "chunk_count": 0,
+                    "pages": set()
+                }
+            doc_info[doc_name]["chunk_count"] += 1
+            doc_info[doc_name]["pages"].add(chunk.get("page", 0))
+        
+        # Convert sets to sorted lists
+        for doc_name in doc_info:
+            doc_info[doc_name]["pages"] = sorted(list(doc_info[doc_name]["pages"]))
+            doc_info[doc_name]["page_range"] = f"{min(doc_info[doc_name]['pages'])}-{max(doc_info[doc_name]['pages'])}" if doc_info[doc_name]["pages"] else "unknown"
+        
+        return {
+            "total_documents": len(doc_info),
+            "total_chunks": len(documents),
+            "documents": doc_info
+        }
+    except Exception as e:
+        return {
+            "error": f"Failed to list documents: {str(e)}",
+            "total_documents": 0,
+            "total_chunks": len(documents)
         }
 
 @app.post("/ask-stream")

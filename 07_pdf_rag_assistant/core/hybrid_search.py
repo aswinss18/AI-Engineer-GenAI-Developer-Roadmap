@@ -50,11 +50,11 @@ def hybrid_search(query: str, vector_k: int = 10, keyword_k: int = 10,
         
         for result in vector_results:
             chunk_key = _get_chunk_key(result)
-            normalized_vector_score = (result.get("similarity_score", 0) - min_vector_score) / vector_range
+            normalized_vector_score = float((result.get("similarity_score", 0) - min_vector_score) / vector_range)
             
             combined_results[chunk_key] = {
                 **result,
-                "vector_score": result.get("similarity_score", 0),
+                "vector_score": float(result.get("similarity_score", 0)),
                 "normalized_vector_score": normalized_vector_score,
                 "keyword_score": 0.0,
                 "normalized_keyword_score": 0.0,
@@ -70,12 +70,12 @@ def hybrid_search(query: str, vector_k: int = 10, keyword_k: int = 10,
         
         for result in keyword_results:
             chunk_key = _get_chunk_key(result)
-            normalized_keyword_score = (result.get("keyword_score", 0) - min_keyword_score) / keyword_range
+            normalized_keyword_score = float((result.get("keyword_score", 0) - min_keyword_score) / keyword_range)
             
             if chunk_key in combined_results:
                 # Update existing result with keyword data
                 combined_results[chunk_key].update({
-                    "keyword_score": result.get("keyword_score", 0),
+                    "keyword_score": float(result.get("keyword_score", 0)),
                     "normalized_keyword_score": normalized_keyword_score,
                     "matched_terms": result.get("matched_terms", [])
                 })
@@ -86,7 +86,7 @@ def hybrid_search(query: str, vector_k: int = 10, keyword_k: int = 10,
                     **result,
                     "vector_score": 0.0,
                     "normalized_vector_score": 0.0,
-                    "keyword_score": result.get("keyword_score", 0),
+                    "keyword_score": float(result.get("keyword_score", 0)),
                     "normalized_keyword_score": normalized_keyword_score,
                     "search_types": ["keyword"]
                 }
@@ -105,10 +105,10 @@ def hybrid_search(query: str, vector_k: int = 10, keyword_k: int = 10,
             hybrid_score *= 1.2  # 20% boost for multi-method matches
         
         result.update({
-            "hybrid_score": hybrid_score,
+            "hybrid_score": float(hybrid_score),  # Ensure it's a Python float
             "search_method": "hybrid",
-            "vector_weight": vector_weight,
-            "keyword_weight": keyword_weight
+            "vector_weight": float(vector_weight),
+            "keyword_weight": float(keyword_weight)
         })
         
         final_results.append(result)
@@ -147,6 +147,6 @@ def get_hybrid_search_stats(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "vector_only": vector_only,
         "keyword_only": keyword_only,
         "both_methods": both_methods,
-        "avg_hybrid_score": round(avg_hybrid_score, 3),
-        "top_score": round(results[0].get("hybrid_score", 0), 3) if results else 0
+        "avg_hybrid_score": float(round(avg_hybrid_score, 3)),  # Ensure Python float
+        "top_score": float(round(results[0].get("hybrid_score", 0), 3)) if results else 0.0
     }

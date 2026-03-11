@@ -1,8 +1,8 @@
-# Hybrid RAG Pipeline
+# Multi-Document Hybrid RAG Pipeline
 
 ## Overview
 
-This implementation features an advanced hybrid RAG pipeline that combines vector similarity search with keyword-based search, followed by intelligent reranking and context compression for superior retrieval precision and coverage.
+This implementation features an advanced multi-document hybrid RAG pipeline that combines vector similarity search with keyword-based search, intelligent document grouping, cross-document analysis, and comparison reasoning for superior retrieval precision and multi-perspective synthesis.
 
 ## Pipeline Architecture
 
@@ -10,191 +10,230 @@ This implementation features an advanced hybrid RAG pipeline that combines vecto
 Query
   ↓
 Hybrid Search (Vector + Keyword)
-  ├── Vector Search (top 8 candidates)
-  └── Keyword Search (top 8 candidates)
+  ├── Vector Search (top 10 candidates)
+  └── Keyword Search (top 10 candidates)
+  ↓
+Group Chunks by Document
   ↓
 Combine & Deduplicate Results
   ↓
 Rerank using Cosine Similarity
   ↓
-Context Compression
+Multi-Document Context Building
   ↓
-Smart Context Selection (best 3-5 chunks)
+Cross-Document Analysis & Comparison
+  ↓
+Specialized Reasoning Prompt
   ↓
 Send to LLM
 ```
 
 ## Key Features
 
-### 1. Hybrid Retrieval System
+### 1. Multi-Document Intelligence
+- **Document Grouping**: Automatically groups chunks by source document
+- **Cross-Document Analysis**: Compares viewpoints across multiple sources
+- **Document Boundaries**: Maintains clear document separation in context
+- **Coverage Analysis**: Tracks chunk distribution across documents
+- **Comparison Reasoning**: Specialized prompts for multi-document synthesis
+
+### 2. Enhanced Hybrid Retrieval
 - **Vector Search**: FAISS-based semantic similarity matching
 - **Keyword Search**: TF-IDF based exact term matching
 - **Smart Combination**: Deduplication and score normalization
 - **Multi-method Boost**: 20% score boost for chunks found by both methods
+- **Document-Aware Scoring**: Considers document coverage and distribution
 
-### 2. Advanced Keyword Search
-- **Inverted Index**: Fast term lookup with document frequencies
-- **TF-IDF Scoring**: Term frequency × Inverse document frequency
-- **Query Tokenization**: Intelligent text preprocessing
-- **Matched Terms Tracking**: Shows which keywords triggered results
+### 3. Intelligent Context Building
+- **Structured Context**: Clear document boundaries with headers
+- **Multi-Doc Prioritization**: Sorts documents by relevance scores
+- **Context Optimization**: Maximizes information within token limits
+- **Document Metadata**: Includes coverage, page ranges, and quality metrics
 
-### 3. Hybrid Scoring System
-- **Normalized Scores**: Both vector and keyword scores normalized to 0-1 range
-- **Weighted Combination**: 60% vector + 40% keyword (configurable)
-- **Multi-method Bonus**: Extra scoring for chunks found by both systems
-- **Transparent Metrics**: Full score breakdown in results
-
-### 4. Enhanced UI Integration
-- **Search Type Badges**: Visual indicators for Vector/Keyword/Hybrid results
-- **Hybrid Statistics**: Shows distribution across search methods
-- **Matched Keywords**: Displays which terms triggered keyword matches
-- **Score Transparency**: Multiple score types (hybrid, vector, keyword, final)
+### 4. Comparison & Synthesis
+- **Cross-Document Prompts**: Specialized prompts for comparison tasks
+- **Viewpoint Analysis**: Identifies agreements and disagreements
+- **Source Attribution**: Clear citation of document sources
+- **Synthesis Reasoning**: Combines insights from multiple perspectives
 
 ## Implementation Details
 
 ### Core Components
 
-1. **`core/keyword_search.py`**
-   - `KeywordSearcher`: Main keyword search engine
+1. **`core/multi_document_context.py`**
+   - `group_chunks_by_document()`: Groups chunks by source document
+   - `build_multi_document_context()`: Creates structured multi-doc context
+   - `create_comparison_prompt()`: Generates specialized comparison prompts
+   - `analyze_document_distribution()`: Analyzes document coverage
+   - `extract_document_insights()`: Identifies document relationships
+
+2. **`core/keyword_search.py`**
+   - `KeywordSearcher`: TF-IDF based keyword search engine
    - `build_index()`: Creates inverted index from documents
-   - `search()`: TF-IDF based keyword search
    - Tokenization and scoring algorithms
 
-2. **`core/hybrid_search.py`**
+3. **`core/hybrid_search.py`**
    - `hybrid_search()`: Combines vector and keyword results
    - Score normalization and weighting
-   - Deduplication by chunk identity
    - Multi-method detection and boosting
 
-3. **`core/vector_store.py`**
-   - Enhanced to build keyword index automatically
-   - Maintains both vector and keyword search capabilities
-   - Integrated persistence for both search types
-
 4. **`core/rag_pipeline.py`**
-   - Updated pipeline functions use hybrid search
-   - Enhanced metadata with hybrid statistics
-   - Improved source quality information
+   - Updated pipeline uses multi-document context building
+   - Enhanced metadata with document analysis
+   - Cross-document reasoning capabilities
 
-### Configuration
+### Multi-Document Context Format
+
+```
+Multi-Document Analysis (3 documents: doc1.pdf, doc2.pdf, doc3.pdf)
+
+=== Document: doc1.pdf ===
+
+[Page 5] First relevant chunk from document 1...
+
+[Page 7] Second relevant chunk from document 1...
+
+=== Document: doc2.pdf ===
+
+[Page 12] Relevant chunk from document 2...
+
+=== Document: doc3.pdf ===
+
+[Page 3] Relevant chunk from document 3...
+```
+
+### Comparison Prompt Template
+
+```
+You are an AI research assistant specializing in multi-document analysis and comparison.
+
+TASK: Analyze the provided documents to answer the question. Pay special attention to:
+- Comparing viewpoints across different documents
+- Identifying agreements and disagreements between sources
+- Synthesizing information from multiple perspectives
+- Clearly citing which document supports each point
+
+DOCUMENTS PROVIDED: 3 documents with relevant information
+[Multi-document context here]
+
+QUESTION: [User question]
+
+INSTRUCTIONS:
+1. Answer using information from the provided documents
+2. Compare viewpoints when multiple documents discuss the same topic
+3. Clearly indicate which document each piece of information comes from
+4. Present both perspectives fairly if documents disagree
+5. Synthesize insights from combining multiple sources
+6. Use format: "According to [Document Name]..." when citing sources
+```
+
+## Configuration
 
 ```python
+# Multi-document settings
+VECTOR_K = 10              # Vector search candidates (increased)
+KEYWORD_K = 10             # Keyword search candidates (increased)
+RERANKED_TOP_K = 8         # After reranking (increased)
+MAX_CONTEXT_LENGTH = 3500  # Total context limit (increased)
+
+# Document analysis
+MIN_DOC_COVERAGE = 5       # Minimum percentage for inclusion
+MAX_DOCUMENTS = 5          # Maximum documents in context
+
 # Hybrid search settings
-VECTOR_K = 8               # Vector search candidates
-KEYWORD_K = 8              # Keyword search candidates
 VECTOR_WEIGHT = 0.6        # Vector score weight
 KEYWORD_WEIGHT = 0.4       # Keyword score weight
 MULTI_METHOD_BOOST = 1.2   # Boost for both methods
-
-# Reranking settings
-RERANKED_TOP_K = 5         # After reranking
-FINAL_CHUNKS = 3-5         # Context selection
-
-# Compression settings
-MAX_CHUNK_LENGTH = 600     # Per chunk limit
-MAX_CONTEXT_LENGTH = 2500  # Total context limit
 ```
 
-## Benefits Over Vector-Only Search
+## Benefits Over Single-Document Systems
 
-### Improved Coverage
-- **Semantic + Lexical**: Captures both meaning and exact terms
-- **Query Robustness**: Works well for both conceptual and specific queries
-- **Terminology Matching**: Finds exact technical terms and acronyms
-- **Fallback Capability**: Keyword search when vector search fails
+### Enhanced Coverage
+- **Multi-Perspective Analysis**: Captures different viewpoints on topics
+- **Comprehensive Context**: Draws from multiple authoritative sources
+- **Cross-Validation**: Validates information across documents
+- **Broader Knowledge**: Accesses wider range of information
 
-### Enhanced Precision
-- **Multi-method Validation**: Chunks found by both methods are highly relevant
-- **Diverse Results**: Combines different retrieval paradigms
-- **Query-adaptive**: Automatically balances semantic vs. lexical matching
-- **Reduced False Negatives**: Less likely to miss relevant content
+### Improved Analysis Quality
+- **Comparative Insights**: Identifies similarities and differences
+- **Balanced Perspectives**: Presents multiple viewpoints fairly
+- **Source Attribution**: Clear tracking of information sources
+- **Synthesis Capability**: Combines insights from multiple sources
 
 ### Better User Experience
-- **Transparent Results**: Shows how each chunk was found
-- **Keyword Highlighting**: Displays matched terms
-- **Search Statistics**: Detailed breakdown of retrieval methods
-- **Quality Indicators**: Multiple scoring dimensions
+- **Document Transparency**: Shows which documents contribute to answers
+- **Coverage Metrics**: Displays document participation levels
+- **Quality Indicators**: Multi-dimensional scoring and analysis
+- **Comparison Features**: Specialized handling of comparison queries
 
 ## Usage Examples
 
-### Hybrid Search API
+### Multi-Document Analysis
 ```python
-from core.hybrid_search import hybrid_search
-
-# Perform hybrid search
-results = hybrid_search(
-    query="machine learning algorithms",
-    vector_k=8,
-    keyword_k=8,
-    vector_weight=0.6,
-    keyword_weight=0.4
+# The pipeline automatically detects and handles multiple documents
+results = ask_question_stream_with_sources(
+    "Compare the methodologies discussed in the research papers"
 )
 
-# Results include hybrid scores and search type information
-for result in results:
-    print(f"Text: {result['text'][:100]}...")
-    print(f"Hybrid Score: {result['hybrid_score']}")
-    print(f"Search Types: {result['search_types']}")
-    if 'matched_terms' in result:
-        print(f"Keywords: {result['matched_terms']}")
+# Returns enhanced metadata including:
+# - document_analysis: Document count, coverage, distribution
+# - context_metadata: Multi-document context information
+# - document_insights: Relationships and common themes
 ```
 
-### Pipeline Integration
-The hybrid search is automatically used in all question-answering functions:
-
-```python
-# Streaming with hybrid pipeline
-for chunk_data in ask_question_stream_with_sources(question):
-    # Returns enhanced metadata including:
-    # - hybrid_stats with method distribution
-    # - source search_types and matched_terms
-    # - multiple score types (hybrid, vector, keyword)
-    pass
-```
+### Document Comparison Queries
+- "Compare the approaches discussed in different documents"
+- "What are the main differences between the methodologies?"
+- "How do the authors agree or disagree on this topic?"
+- "Synthesize the key findings from all sources"
 
 ## Monitoring and Analytics
 
-### Hybrid Search Statistics
-- **Total Results**: Combined unique chunks
-- **Vector Only**: Chunks found only by vector search
-- **Keyword Only**: Chunks found only by keyword search
-- **Both Methods**: Chunks found by both (highest quality)
-- **Average Scores**: Performance metrics
+### Multi-Document Metrics
+- **Document Count**: Number of documents contributing to answer
+- **Coverage Distribution**: Percentage contribution per document
+- **Cross-Document Matches**: Chunks found across multiple documents
+- **Context Efficiency**: Information density per document
 
 ### UI Indicators
-- **Purple "Hybrid" Badge**: Shows hybrid pipeline is active
-- **Method Distribution**: Visual breakdown of search types
-- **Source Badges**: Vector/Keyword/Both indicators per source
-- **Keyword Display**: Shows matched terms for keyword results
-- **Score Transparency**: Multiple score types displayed
+- **Green "Multi-Doc" Badge**: Shows multi-document pipeline is active
+- **Document Coverage**: Shows percentage contribution per document
+- **Cross-Document Analysis**: Visual indicators for multi-doc mode
+- **Source Distribution**: Document-wise breakdown of sources
 
 ## Performance Characteristics
 
-### Query Types and Performance
-1. **Conceptual Queries**: Vector search dominates, keyword provides validation
-2. **Specific Term Queries**: Keyword search leads, vector adds context
-3. **Mixed Queries**: Balanced contribution from both methods
-4. **Technical Queries**: Keyword search excels at exact terminology
+### Query Types and Multi-Document Performance
+1. **Comparison Queries**: Excellent performance with specialized prompts
+2. **Synthesis Questions**: Strong cross-document information combining
+3. **Specific Lookups**: Efficient document-specific information retrieval
+4. **Broad Topics**: Comprehensive coverage across multiple sources
 
-### Computational Overhead
-- **Index Building**: One-time cost when documents are added
-- **Search Time**: ~2x single method (parallel execution possible)
-- **Memory Usage**: Additional inverted index (~10-20% of document size)
-- **Quality Gain**: Significant improvement in result relevance
+### Computational Considerations
+- **Increased Context**: Larger context windows for multi-document analysis
+- **Document Grouping**: Additional processing for document organization
+- **Comparison Logic**: Enhanced reasoning for cross-document analysis
+- **Quality Gains**: Significant improvement in answer comprehensiveness
 
 ## Testing
 
-Run the test script to verify hybrid features:
+Run the comprehensive test script:
 
 ```bash
 python test_enhanced_pipeline.py
 ```
 
+Tests include:
+- Multi-document detection and grouping
+- Cross-document analysis capabilities
+- Document comparison features
+- Hybrid search across multiple documents
+
 ## Future Enhancements
 
-1. **Query Analysis**: Automatic weight adjustment based on query type
-2. **Semantic Expansion**: Expand queries with synonyms and related terms
-3. **Learning Weights**: Adapt vector/keyword weights based on user feedback
-4. **Parallel Execution**: Run vector and keyword search concurrently
-5. **Advanced Tokenization**: Better handling of technical terms and phrases
-6. **Fuzzy Matching**: Handle typos and variations in keyword search
+1. **Document Relationship Mapping**: Identify citations and references between documents
+2. **Temporal Analysis**: Consider document publication dates in analysis
+3. **Authority Weighting**: Weight documents by credibility and relevance
+4. **Conflict Resolution**: Advanced handling of contradictory information
+5. **Summary Generation**: Automatic multi-document summaries
+6. **Topic Clustering**: Group documents by thematic similarity

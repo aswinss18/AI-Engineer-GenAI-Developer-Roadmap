@@ -18,7 +18,7 @@ def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
     if norm_a == 0 or norm_b == 0:
         return 0.0
     
-    return dot_product / (norm_a * norm_b)
+    return float(dot_product / (norm_a * norm_b))  # Ensure Python float
 
 def rerank_chunks(query_embedding: List[float], chunks: List[Dict[str, Any]], top_k: int = 3) -> List[Dict[str, Any]]:
     """
@@ -56,8 +56,8 @@ def rerank_chunks(query_embedding: List[float], chunks: List[Dict[str, Any]], to
             # Update chunk with new scores
             chunk_copy = chunk.copy()
             chunk_copy.update({
-                "cosine_similarity": cosine_score,
-                "combined_score": combined_score,
+                "cosine_similarity": float(cosine_score),  # Ensure Python float
+                "combined_score": float(combined_score),   # Ensure Python float
                 "reranked": True
             })
             

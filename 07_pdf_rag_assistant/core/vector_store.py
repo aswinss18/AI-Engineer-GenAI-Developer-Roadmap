@@ -74,14 +74,14 @@ def search(query_embedding, k=10):
     for i, distance in zip(indices[0], distances[0]):
         if i < len(documents):  # Safety check
             # Convert L2 distance to similarity score (lower distance = higher similarity)
-            similarity_score = 1.0 / (1.0 + distance)
+            similarity_score = 1.0 / (1.0 + float(distance))  # Convert to Python float
             results.append({
                 "text": documents[i]["text"],
                 "page": documents[i]["page"],
                 "doc": documents[i]["doc"],
                 "chunk_index": documents[i].get("chunk_index", i),
                 "similarity_score": similarity_score,
-                "distance": float(distance)
+                "distance": float(distance)  # Convert to Python float
             })
     
     return results
