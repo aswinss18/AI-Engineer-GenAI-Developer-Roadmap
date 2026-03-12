@@ -574,6 +574,7 @@ export default function PDFRagPage() {
                     position: "sticky",
                     top: "1rem",
                     zIndex: 10,
+                    flexWrap: "wrap",
                 }}
             >
                 <button
@@ -620,37 +621,55 @@ export default function PDFRagPage() {
                     </span>
                 </div>
 
-                {/* Mode Toggle */}
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                {/* Mode Toggle - Made more prominent */}
+                <div style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "0.5rem",
+                    background: "rgba(0,0,0,0.1)",
+                    padding: "0.25rem",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border)"
+                }}>
+                    <span style={{ 
+                        fontSize: "0.7rem", 
+                        color: "var(--muted)", 
+                        fontWeight: 600,
+                        paddingLeft: "0.5rem"
+                    }}>
+                        MODE:
+                    </span>
                     <button
                         onClick={() => setAgentMode(!agentMode)}
                         style={{
-                            background: agentMode ? "rgba(34, 197, 94, 0.1)" : "rgba(225, 29, 72, 0.1)",
-                            border: agentMode ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(225, 29, 72, 0.3)",
+                            background: agentMode ? "rgba(34, 197, 94, 0.15)" : "rgba(225, 29, 72, 0.15)",
+                            border: agentMode ? "2px solid rgba(34, 197, 94, 0.4)" : "2px solid rgba(225, 29, 72, 0.4)",
                             color: agentMode ? "#22c55e" : "#e11d48",
                             cursor: "pointer",
-                            fontSize: "0.8rem",
-                            padding: "0.4rem 0.8rem",
+                            fontSize: "0.85rem",
+                            padding: "0.5rem 1rem",
                             borderRadius: "var(--radius-md)",
                             transition: "all 0.15s",
-                            fontWeight: 600,
+                            fontWeight: 700,
+                            minWidth: "120px",
+                            textAlign: "center",
                         }}
                         onMouseEnter={(e) => {
+                            if (agentMode) {
+                                (e.currentTarget as HTMLElement).style.background = "rgba(34, 197, 94, 0.25)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(34, 197, 94, 0.6)";
+                            } else {
+                                (e.currentTarget as HTMLElement).style.background = "rgba(225, 29, 72, 0.25)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(225, 29, 72, 0.6)";
+                            }
+                        }}
+                        onMouseLeave={(e) => {
                             if (agentMode) {
                                 (e.currentTarget as HTMLElement).style.background = "rgba(34, 197, 94, 0.15)";
                                 (e.currentTarget as HTMLElement).style.borderColor = "rgba(34, 197, 94, 0.4)";
                             } else {
                                 (e.currentTarget as HTMLElement).style.background = "rgba(225, 29, 72, 0.15)";
                                 (e.currentTarget as HTMLElement).style.borderColor = "rgba(225, 29, 72, 0.4)";
-                            }
-                        }}
-                        onMouseLeave={(e) => {
-                            if (agentMode) {
-                                (e.currentTarget as HTMLElement).style.background = "rgba(34, 197, 94, 0.1)";
-                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(34, 197, 94, 0.3)";
-                            } else {
-                                (e.currentTarget as HTMLElement).style.background = "rgba(225, 29, 72, 0.1)";
-                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(225, 29, 72, 0.3)";
                             }
                         }}
                     >

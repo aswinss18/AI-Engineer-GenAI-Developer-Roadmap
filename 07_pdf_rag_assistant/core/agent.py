@@ -86,7 +86,11 @@ When a user asks a question:
 - If they ask about weather, use the get_weather tool
 - If they need currency conversion, use the convert_currency tool
 
-Always use the most appropriate tool for the user's request. If no tool is needed, respond directly.
+IMPORTANT: You can use multiple tools in sequence to answer complex questions. For example:
+- If someone asks about the weather where a person lives, first search documents to find their location, then get weather for that location
+- If someone asks to calculate a percentage of a salary mentioned in documents, first search for the salary amount, then calculate the percentage
+
+Always use the most appropriate tool(s) for the user's request. If no tool is needed, respond directly.
 
 Be helpful, accurate, and provide clear explanations of the results."""
             }
@@ -144,13 +148,59 @@ Be helpful, accurate, and provide clear explanations of the results."""
                     })
                 
                 # Second LLM call to generate final response with tool results
-                logger.info("Generating final response with tool results")
+                # This call might also request additional tools
+                logger.info("Generating response with tool results")
                 final_response = self.client.chat.completions.create(
                     model=self.model,
-                    messages=messages
+                    messages=messages,
+                    tools=self.tools,
+                    tool_choice="auto"
                 )
                 
-                final_answer = final_response.choices[0].message.content
+                final_response_message = final_response.choices[0].message
+                additional_tool_calls = final_response_message.tool_calls
+                
+                # Add the assistant's response to messages
+                messages.append(final_response_message)
+                
+                # Handle additional tool calls if any
+                if additional_tool_calls:
+                    logger.info(f"LLM requested {len(additional_tool_calls)} additional tool calls")
+                    
+                    for tool_call in additional_tool_calls:
+                        tool_name = tool_call.function.name
+                        try:
+                            arguments = json.loads(tool_call.function.arguments)
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse tool arguments: {e}")
+                            arguments = {}
+                        
+                        # Execute the additional tool
+                        tool_result = self.execute_tool(tool_name, arguments)
+                        tool_results.append({
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                            "result": tool_result
+                        })
+                        
+                        # Add tool result to messages
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps(tool_result)
+                        })
+                    
+                    # Final LLM call to generate the complete response
+                    logger.info("Generating final response with all tool results")
+                    complete_response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages
+                    )
+                    
+                    final_answer = complete_response.choices[0].message.content
+                else:
+                    # No additional tools needed
+                    final_answer = final_response_message.content
                 
             else:
                 # No tools needed, use direct response
@@ -161,9 +211,9 @@ Be helpful, accurate, and provide clear explanations of the results."""
                 "success": True,
                 "query": query,
                 "answer": final_answer,
-                "tools_used": len(tool_calls) if tool_calls else 0,
+                "tools_used": len(tool_results),
                 "tool_calls": tool_results,
-                "has_tool_calls": bool(tool_calls)
+                "has_tool_calls": bool(tool_results)
             }
             
         except Exception as e:
