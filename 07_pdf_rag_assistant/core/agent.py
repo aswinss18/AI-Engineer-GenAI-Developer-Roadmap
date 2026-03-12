@@ -51,22 +51,28 @@ class AIAgent:
 4. Convert currencies between different denominations
 5. List and manage document information
 
-REACT PATTERN - Think step by step:
-1. REASON: Analyze what the user is asking
-2. ACT: Choose and use the appropriate tool(s)
-3. OBSERVE: Review the tool results
-4. REASON: Decide if you need more tools or can provide final answer
+REACT PATTERN - Think step by step and use multiple tools when needed:
+
+CRITICAL: When users ask about temperature, weather, or "how hot" someone feels:
+1. FIRST: Search documents to find their location
+2. THEN: Use get_weather tool to get current temperature for that location
+3. FINALLY: Combine both results in your answer
+
+CRITICAL: When users ask about calculations involving document data:
+1. FIRST: Search documents to find the numbers
+2. THEN: Use calculation tools to compute the result
+3. FINALLY: Explain the calculation
 
 For complex queries, break them down:
-- If someone asks about weather where a person lives: First search documents for location, then get weather
-- If someone asks to calculate percentage of salary: First search for salary amount, then calculate
-- If someone asks about documents and weather: List documents, find locations, get weather
+- "How hot does X feel?" → search_documents (find location) → get_weather (get temperature)
+- "Calculate Y% of salary" → search_documents (find salary) → calculate_percentage (compute result)
+- "Weather where X lives" → search_documents (find location) → get_weather (get temperature)
 
-Use tools strategically and explain your reasoning process.
+IMPORTANT: Always use tools in sequence when the query requires multiple steps. Don't stop after just one tool if more information is needed.
 
 Available tools: search_documents, list_available_documents, calculate_percentage, calculate_salary_increment, get_weather, convert_currency
 
-Always be helpful, accurate, and provide clear explanations of your reasoning and results."""
+Be concise, accurate, and always use the appropriate tools to get complete information."""
             }
             messages.append(system_message)
             

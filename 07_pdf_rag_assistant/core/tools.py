@@ -215,10 +215,26 @@ def get_weather(city: str) -> Dict[str, Any]:
         "ahmedabad": {"temperature": 36, "condition": "Very Hot", "humidity": 40}
     }
     
-    city_lower = city.lower()
+    # Clean and normalize city name - handle variations like "Bangalore, Karnataka"
+    city_clean = city.lower().strip()
     
-    if city_lower in mock_weather_data:
-        weather = mock_weather_data[city_lower]
+    # Extract main city name if it contains comma or other separators
+    if ',' in city_clean:
+        city_clean = city_clean.split(',')[0].strip()
+    
+    # Handle common variations
+    city_variations = {
+        "bengaluru": "bangalore",
+        "bombay": "mumbai",
+        "calcutta": "kolkata",
+        "madras": "chennai"
+    }
+    
+    if city_clean in city_variations:
+        city_clean = city_variations[city_clean]
+    
+    if city_clean in mock_weather_data:
+        weather = mock_weather_data[city_clean]
         return {
             "success": True,
             "city": city.title(),
@@ -226,7 +242,7 @@ def get_weather(city: str) -> Dict[str, Any]:
             "condition": weather["condition"],
             "humidity": weather["humidity"],
             "unit": "Celsius",
-            "message": f"Weather in {city.title()}: {weather['temperature']}°C, {weather['condition']}"
+            "message": f"Weather in {city.split(',')[0].strip()}: {weather['temperature']}°C, {weather['condition']}"
         }
     else:
         # Default weather for unknown cities
