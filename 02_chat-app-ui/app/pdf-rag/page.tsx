@@ -61,6 +61,14 @@ interface Message {
         latency: number;
         pipeline_version?: string;
     };
+    // Agent-specific fields
+    tools_used?: number;
+    tool_calls?: Array<{
+        tool_name: string;
+        arguments: any;
+        result: any;
+    }>;
+    has_tool_calls?: boolean;
 }
 
 export default function PDFRagPage() {
@@ -73,6 +81,7 @@ export default function PDFRagPage() {
     const [processingStatus, setProcessingStatus] = useState("");
     const [persistenceStatus, setPersistenceStatus] = useState<any>(null);
     const [showPersistencePanel, setShowPersistencePanel] = useState(false);
+    const [agentMode, setAgentMode] = useState(false); // New state for agent mode
     const bottomRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
@@ -130,11 +139,14 @@ export default function PDFRagPage() {
         setLoading(true);
 
         try {
-            console.log('Sending question:', text);
-            const res = await fetch('http://localhost:8000/ask-stream', {
+            console.log('Sending question:', text, 'Agent mode:', agentMode);
+            
+            // Choose endpoint based on mode
+            const endpoint = agentMode ? 'agent-stream' : 'ask-stream';
+            const res = await fetch(`http://localhost:8000/${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `question=${encodeURIComponent(text)}`,
+                body: agentMode ? `query=${encodeURIComponent(text)}` : `question=${encodeURIComponent(text)}`,
             });
             
             console.log('Response status:', res.status);
@@ -179,23 +191,56 @@ export default function PDFRagPage() {
                                     updated[updated.length - 1] = last;
                                     return updated;
                                 });
-                            } else if (data.answer !== undefined) {
-                                // Append answer chunk and update sources/metadata
-                                setMessages((prev) => {
-                                    const updated = [...prev];
-                                    const last = { ...updated[updated.length - 1] };
-                                    if (data.answer) {
-                                        last.content += data.answer;
-                                    }
-                                    if (data.sources) {
-                                        last.sources = data.sources;
-                                    }
-                                    if (data.metadata) {
-                                        last.metadata = data.metadata;
-                                    }
-                                    updated[updated.length - 1] = last;
-                                    return updated;
-                                });
+                            } else if (agentMode) {
+                                // Handle agent streaming response
+                                if (data.type === "metadata") {
+                                    setMessages((prev) => {
+                                        const updated = [...prev];
+                                        const last = { ...updated[updated.length - 1] };
+                                        last.tools_used = data.tools_used;
+                                        last.tool_calls = data.tool_calls;
+                                        last.has_tool_calls = data.has_tool_calls;
+                                        updated[updated.length - 1] = last;
+                                        return updated;
+                                    });
+                                } else if (data.type === "content") {
+                                    setMessages((prev) => {
+                                        const updated = [...prev];
+                                        const last = { ...updated[updated.length - 1] };
+                                        last.content += data.content;
+                                        updated[updated.length - 1] = last;
+                                        return updated;
+                                    });
+                                } else if (data.type === "error") {
+                                    setMessages((prev) => {
+                                        const updated = [...prev];
+                                        const last = { ...updated[updated.length - 1] };
+                                        last.content = data.content;
+                                        last.streaming = false;
+                                        updated[updated.length - 1] = last;
+                                        return updated;
+                                    });
+                                }
+                            } else {
+                                // Handle regular RAG streaming response
+                                if (data.answer !== undefined) {
+                                    // Append answer chunk and update sources/metadata
+                                    setMessages((prev) => {
+                                        const updated = [...prev];
+                                        const last = { ...updated[updated.length - 1] };
+                                        if (data.answer) {
+                                            last.content += data.answer;
+                                        }
+                                        if (data.sources) {
+                                            last.sources = data.sources;
+                                        }
+                                        if (data.metadata) {
+                                            last.metadata = data.metadata;
+                                        }
+                                        updated[updated.length - 1] = last;
+                                        return updated;
+                                    });
+                                }
                             }
                         } catch (e) {
                             console.error('Error parsing SSE data:', e);
@@ -563,16 +608,54 @@ export default function PDFRagPage() {
                             fontSize: "0.68rem",
                             padding: "0.15rem 0.55rem",
                             borderRadius: "9999px",
-                            background: "#e11d4822",
-                            color: "#e11d48",
-                            border: "1px solid #e11d4844",
+                            background: agentMode ? "#22c55e22" : "#e11d4822",
+                            color: agentMode ? "#22c55e" : "#e11d48",
+                            border: agentMode ? "1px solid #22c55e44" : "1px solid #e11d4844",
                             textTransform: "uppercase",
                             letterSpacing: "0.06em",
                             fontWeight: 600,
                         }}
                     >
-                        PDF Chat
+                        {agentMode ? "AI Agent" : "PDF Chat"}
                     </span>
+                </div>
+
+                {/* Mode Toggle */}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <button
+                        onClick={() => setAgentMode(!agentMode)}
+                        style={{
+                            background: agentMode ? "rgba(34, 197, 94, 0.1)" : "rgba(225, 29, 72, 0.1)",
+                            border: agentMode ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(225, 29, 72, 0.3)",
+                            color: agentMode ? "#22c55e" : "#e11d48",
+                            cursor: "pointer",
+                            fontSize: "0.8rem",
+                            padding: "0.4rem 0.8rem",
+                            borderRadius: "var(--radius-md)",
+                            transition: "all 0.15s",
+                            fontWeight: 600,
+                        }}
+                        onMouseEnter={(e) => {
+                            if (agentMode) {
+                                (e.currentTarget as HTMLElement).style.background = "rgba(34, 197, 94, 0.15)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(34, 197, 94, 0.4)";
+                            } else {
+                                (e.currentTarget as HTMLElement).style.background = "rgba(225, 29, 72, 0.15)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(225, 29, 72, 0.4)";
+                            }
+                        }}
+                        onMouseLeave={(e) => {
+                            if (agentMode) {
+                                (e.currentTarget as HTMLElement).style.background = "rgba(34, 197, 94, 0.1)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(34, 197, 94, 0.3)";
+                            } else {
+                                (e.currentTarget as HTMLElement).style.background = "rgba(225, 29, 72, 0.1)";
+                                (e.currentTarget as HTMLElement).style.borderColor = "rgba(225, 29, 72, 0.3)";
+                            }
+                        }}
+                    >
+                        {agentMode ? "🤖 Agent Mode" : "📄 RAG Mode"}
+                    </button>
                 </div>
 
                 {/* Status dot */}
@@ -847,9 +930,12 @@ export default function PDFRagPage() {
                             paddingTop: "4rem",
                         }}
                     >
-                        <span style={{ fontSize: "3rem" }}>📚</span>
+                        <span style={{ fontSize: "3rem" }}>{agentMode ? "🤖" : "📚"}</span>
                         <p style={{ fontSize: "1rem", textAlign: "center" }}>
-                            Your PDF is ready! Ask questions about the document content.
+                            {agentMode 
+                                ? "AI Agent ready! I can search documents, perform calculations, get weather, and more."
+                                : "Your PDF is ready! Ask questions about the document content."
+                            }
                         </p>
                         <div style={{ 
                             display: "flex", 
@@ -858,12 +944,17 @@ export default function PDFRagPage() {
                             justifyContent: "center",
                             marginTop: "1rem"
                         }}>
-                            {[
+                            {(agentMode ? [
+                                "What documents do I have?",
+                                "Calculate 15% of 50000",
+                                "Weather in Bangalore",
+                                "Convert 100 USD to INR"
+                            ] : [
                                 "What is this document about?",
                                 "Summarize the main points",
                                 "What are the key findings?",
                                 "Explain the methodology"
-                            ].map((suggestion, i) => (
+                            ]).map((suggestion, i) => (
                                 <button
                                     key={i}
                                     onClick={() => setInput(suggestion)}
@@ -941,6 +1032,84 @@ export default function PDFRagPage() {
                                             animation: "blink 0.7s step-end infinite",
                                         }}
                                     />
+                                )}
+                                
+                                {/* Tool calls section */}
+                                {msg.tool_calls && msg.tool_calls.length > 0 && !msg.streaming && (
+                                    <div style={{ 
+                                        marginTop: "1rem", 
+                                        paddingTop: "1rem", 
+                                        borderTop: "1px solid var(--border)",
+                                    }}>
+                                        <div style={{ 
+                                            fontSize: "0.8rem", 
+                                            fontWeight: 600, 
+                                            color: "var(--muted)",
+                                            marginBottom: "0.5rem",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "0.5rem"
+                                        }}>
+                                            🛠️ Tools Used ({msg.tools_used})
+                                        </div>
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                                            {msg.tool_calls.map((toolCall, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    style={{
+                                                        background: "rgba(34, 197, 94, 0.1)",
+                                                        border: "1px solid rgba(34, 197, 94, 0.2)",
+                                                        borderRadius: "var(--radius-sm)",
+                                                        padding: "0.5rem 0.75rem",
+                                                        fontSize: "0.8rem",
+                                                    }}
+                                                >
+                                                    <div style={{ 
+                                                        display: "flex", 
+                                                        alignItems: "center", 
+                                                        gap: "0.5rem",
+                                                        marginBottom: "0.25rem",
+                                                        flexWrap: "wrap"
+                                                    }}>
+                                                        <span style={{ 
+                                                            fontWeight: 600, 
+                                                            color: "#22c55e" 
+                                                        }}>
+                                                            {toolCall.tool_name}
+                                                        </span>
+                                                        <span style={{ 
+                                                            fontSize: "0.7rem", 
+                                                            color: "var(--muted)",
+                                                            background: "rgba(34, 197, 94, 0.1)",
+                                                            padding: "0.1rem 0.4rem",
+                                                            borderRadius: "4px"
+                                                        }}>
+                                                            {toolCall.result.success ? "✅ Success" : "❌ Failed"}
+                                                        </span>
+                                                    </div>
+                                                    {Object.keys(toolCall.arguments).length > 0 && (
+                                                        <div style={{ 
+                                                            fontSize: "0.7rem", 
+                                                            color: "var(--muted)",
+                                                            marginBottom: "0.25rem"
+                                                        }}>
+                                                            Args: {JSON.stringify(toolCall.arguments)}
+                                                        </div>
+                                                    )}
+                                                    <div style={{ 
+                                                        color: "var(--muted)", 
+                                                        lineHeight: 1.4,
+                                                        fontSize: "0.75rem"
+                                                    }}>
+                                                        {toolCall.result.success 
+                                                            ? (toolCall.result.message || toolCall.result.answer || "Tool executed successfully")
+                                                            : (toolCall.result.error || "Tool execution failed")
+                                                        }
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
                                 
                                 {/* Sources section */}
@@ -1390,7 +1559,10 @@ export default function PDFRagPage() {
                                     sendMessage();
                                 }
                             }}
-                            placeholder="Ask questions about your PDF document... (Enter to send, Shift+Enter for newline)"
+                            placeholder={agentMode 
+                                ? "Ask me anything! I can search documents, calculate, get weather, convert currency... (Enter to send, Shift+Enter for newline)"
+                                : "Ask questions about your PDF document... (Enter to send, Shift+Enter for newline)"
+                            }
                             disabled={loading || processingDoc}
                             rows={1}
                             style={{

@@ -11,6 +11,7 @@ import shutil
 import json
 from core.rag_pipeline import process_pdf, ask_question, ask_question_stream, ask_question_stream_with_sources
 from core.vector_store import documents, clear_documents, load_persisted_state, get_persistence_status
+from core.agent import run_agent, run_agent_stream
 
 app = FastAPI()
 
@@ -169,5 +170,51 @@ async def ask_stream(question: str = Form()):
         for chunk_data in ask_question_stream_with_sources(question):
             yield f"data: {json.dumps(chunk_data)}\n\n"
         yield f"data: {json.dumps({'done': True})}\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/plain")
+
+@app.post("/agent")
+async def agent_endpoint(query: str = Form()):
+    """
+    AI Agent endpoint with tool calling capabilities
+    
+    Processes user queries and automatically calls appropriate tools:
+    - Document search and analysis
+    - Calculations (percentages, salary increments)
+    - Weather information (mock)
+    - Currency conversion (mock)
+    - Document management
+    """
+    try:
+        result = run_agent(query)
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Agent execution failed: {str(e)}",
+            "query": query,
+            "answer": "I apologize, but I encountered an error while processing your request. Please try again.",
+            "tools_used": 0,
+            "tool_calls": [],
+            "has_tool_calls": False
+        }
+
+@app.post("/agent-stream")
+async def agent_stream_endpoint(query: str = Form()):
+    """
+    AI Agent endpoint with streaming response and tool calling
+    """
+    def generate():
+        try:
+            for chunk_data in run_agent_stream(query):
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            error_data = {
+                "type": "error",
+                "error": str(e),
+                "content": "I apologize, but I encountered an error while processing your request."
+            }
+            yield f"data: {json.dumps(error_data)}\n\n"
     
     return StreamingResponse(generate(), media_type="text/plain")
