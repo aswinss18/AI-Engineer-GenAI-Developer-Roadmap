@@ -305,11 +305,11 @@ def convert_currency(amount: float, from_currency: str, to_currency: str) -> Dic
         }
 
 # =============================================================================
-# TOOL REGISTRY
+# TOOL REGISTRY (ReAct Pattern)
 # =============================================================================
 
-# Available tools registry
-AVAILABLE_TOOLS = {
+# Central tool registry for ReAct agent
+TOOLS_REGISTRY = {
     "search_documents": search_documents,
     "list_available_documents": list_available_documents,
     "calculate_percentage": calculate_percentage,
@@ -318,10 +318,35 @@ AVAILABLE_TOOLS = {
     "convert_currency": convert_currency
 }
 
+# Legacy support
+AVAILABLE_TOOLS = TOOLS_REGISTRY
+
 def get_tool_function(tool_name: str):
     """Get tool function by name"""
-    return AVAILABLE_TOOLS.get(tool_name)
+    return TOOLS_REGISTRY.get(tool_name)
 
 def list_available_tools() -> List[str]:
     """Get list of available tool names"""
-    return list(AVAILABLE_TOOLS.keys())
+    return list(TOOLS_REGISTRY.keys())
+
+def execute_tool_from_registry(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute tool from registry with error handling"""
+    try:
+        tool_function = TOOLS_REGISTRY.get(tool_name)
+        if not tool_function:
+            return {
+                "success": False,
+                "error": f"Tool '{tool_name}' not found in registry",
+                "available_tools": list(TOOLS_REGISTRY.keys())
+            }
+        
+        result = tool_function(**arguments)
+        return result
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Tool execution failed: {str(e)}",
+            "tool_name": tool_name,
+            "arguments": arguments
+        }

@@ -69,6 +69,16 @@ interface Message {
         result: any;
     }>;
     has_tool_calls?: boolean;
+    reasoning_steps?: Array<{
+        step: number;
+        tools_used: Array<{
+            tool_name: string;
+            arguments: any;
+            result: any;
+        }>;
+        reasoning: string;
+    }>;
+    react_pattern?: boolean;
 }
 
 export default function PDFRagPage() {
@@ -200,6 +210,8 @@ export default function PDFRagPage() {
                                         last.tools_used = data.tools_used;
                                         last.tool_calls = data.tool_calls;
                                         last.has_tool_calls = data.has_tool_calls;
+                                        last.reasoning_steps = data.reasoning_steps;
+                                        last.react_pattern = data.react_pattern;
                                         updated[updated.length - 1] = last;
                                         return updated;
                                     });
@@ -1060,6 +1072,22 @@ export default function PDFRagPage() {
                                         paddingTop: "1rem", 
                                         borderTop: "1px solid var(--border)",
                                     }}>
+                                        {/* ReAct Pattern Indicator */}
+                                        {msg.react_pattern && (
+                                            <div style={{ 
+                                                fontSize: "0.75rem", 
+                                                color: "#8b5cf6",
+                                                background: "rgba(139, 92, 246, 0.1)",
+                                                padding: "0.25rem 0.5rem",
+                                                borderRadius: "4px",
+                                                marginBottom: "0.75rem",
+                                                display: "inline-block",
+                                                fontWeight: 600
+                                            }}>
+                                                🧠 ReAct Pattern: Reason → Act → Observe
+                                            </div>
+                                        )}
+                                        
                                         <div style={{ 
                                             fontSize: "0.8rem", 
                                             fontWeight: 600, 
@@ -1070,6 +1098,17 @@ export default function PDFRagPage() {
                                             gap: "0.5rem"
                                         }}>
                                             🛠️ Tools Used ({msg.tools_used})
+                                            {msg.reasoning_steps && msg.reasoning_steps.length > 0 && (
+                                                <span style={{ 
+                                                    fontSize: "0.7rem", 
+                                                    color: "#8b5cf6",
+                                                    background: "rgba(139, 92, 246, 0.1)",
+                                                    padding: "0.1rem 0.4rem",
+                                                    borderRadius: "4px"
+                                                }}>
+                                                    {msg.reasoning_steps.length} Steps
+                                                </span>
+                                            )}
                                         </div>
                                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                                             {msg.tool_calls.map((toolCall, idx) => (
