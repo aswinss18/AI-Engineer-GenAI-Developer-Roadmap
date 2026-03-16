@@ -12,6 +12,7 @@ import json
 from core.rag_pipeline import process_pdf, ask_question, ask_question_stream, ask_question_stream_with_sources
 from core.vector_store import documents, clear_documents, load_persisted_state, get_persistence_status
 from core.agent import run_agent, run_agent_stream
+from core.memory import get_memory_stats, clear_chat_history, clear_all_memory
 
 app = FastAPI()
 
@@ -218,3 +219,48 @@ async def agent_stream_endpoint(query: str = Form()):
             yield f"data: {json.dumps(error_data)}\n\n"
     
     return StreamingResponse(generate(), media_type="text/plain")
+
+@app.get("/memory/status")
+def get_memory_status():
+    """Get agent memory statistics"""
+    try:
+        stats = get_memory_stats()
+        return {
+            "success": True,
+            "memory_stats": stats
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/memory/clear-chat")
+def clear_chat_memory():
+    """Clear chat history (short-term memory)"""
+    try:
+        clear_chat_history()
+        return {
+            "success": True,
+            "message": "Chat history cleared successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/memory/clear-all")
+def clear_all_agent_memory():
+    """Clear all agent memory (use with caution)"""
+    try:
+        clear_all_memory()
+        return {
+            "success": True,
+            "message": "All agent memory cleared successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }

@@ -79,6 +79,7 @@ interface Message {
         reasoning: string;
     }>;
     react_pattern?: boolean;
+    memory_used?: boolean;
 }
 
 export default function PDFRagPage() {
@@ -212,6 +213,7 @@ export default function PDFRagPage() {
                                         last.has_tool_calls = data.has_tool_calls;
                                         last.reasoning_steps = data.reasoning_steps;
                                         last.react_pattern = data.react_pattern;
+                                        last.memory_used = data.memory_used;
                                         updated[updated.length - 1] = last;
                                         return updated;
                                     });
@@ -1075,16 +1077,32 @@ export default function PDFRagPage() {
                                         {/* ReAct Pattern Indicator */}
                                         {msg.react_pattern && (
                                             <div style={{ 
-                                                fontSize: "0.75rem", 
-                                                color: "#8b5cf6",
-                                                background: "rgba(139, 92, 246, 0.1)",
-                                                padding: "0.25rem 0.5rem",
-                                                borderRadius: "4px",
-                                                marginBottom: "0.75rem",
-                                                display: "inline-block",
-                                                fontWeight: 600
+                                                display: "flex",
+                                                gap: "0.5rem",
+                                                marginBottom: "0.75rem"
                                             }}>
-                                                🧠 ReAct Pattern: Reason → Act → Observe
+                                                <div style={{ 
+                                                    fontSize: "0.75rem", 
+                                                    color: "#8b5cf6",
+                                                    background: "rgba(139, 92, 246, 0.1)",
+                                                    padding: "0.25rem 0.5rem",
+                                                    borderRadius: "4px",
+                                                    fontWeight: 600
+                                                }}>
+                                                    🧠 ReAct Pattern: Reason → Act → Observe
+                                                </div>
+                                                {msg.memory_used && (
+                                                    <div style={{ 
+                                                        fontSize: "0.75rem", 
+                                                        color: "#f59e0b",
+                                                        background: "rgba(245, 158, 11, 0.1)",
+                                                        padding: "0.25rem 0.5rem",
+                                                        borderRadius: "4px",
+                                                        fontWeight: 600
+                                                    }}>
+                                                        💾 Memory Used
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         

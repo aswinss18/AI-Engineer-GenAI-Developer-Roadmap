@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from openai import OpenAI
 from .tools import get_tool_function, execute_tool_from_registry, TOOLS_REGISTRY
 from .tool_schemas import get_tool_schemas
+from .memory import agent_memory, add_to_chat_history, get_chat_history, get_memory_context, extract_and_store_facts
 import os
 
 logger = logging.getLogger(__name__)
@@ -26,11 +27,11 @@ class AIAgent:
     
     def run_agent_react(self, query: str, conversation_history: Optional[List[Dict[str, str]]] = None, max_steps: int = 5) -> Dict[str, Any]:
         """
-        Run ReAct agent with iterative reasoning and tool calling
+        Run ReAct agent with iterative reasoning, tool calling, and memory
         
         Args:
             query: User query
-            conversation_history: Optional conversation history
+            conversation_history: Optional conversation history (overrides memory if provided)
             max_steps: Maximum reasoning steps to prevent infinite loops
             
         Returns:
@@ -40,16 +41,18 @@ class AIAgent:
             # Build initial messages
             messages = []
             
-            # System message for ReAct pattern
-            system_message = {
-                "role": "system",
-                "content": """You are an intelligent ReAct agent with access to various tools. You can:
+            # Get memory context for the query
+            memory_context = get_memory_context(query)
+            
+            # System message for ReAct pattern with memory
+            system_content = """You are an intelligent ReAct agent with access to various tools and memory. You can:
 
 1. Search and analyze PDF documents using advanced hybrid RAG pipeline
 2. Perform calculations (percentages, salary increments, etc.)
 3. Get weather information for cities
 4. Convert currencies between different denominations
 5. List and manage document information
+6. Remember previous conversations and important facts
 
 REACT PATTERN - Think step by step and use multiple tools when needed:
 
@@ -68,20 +71,37 @@ For complex queries, break them down:
 - "Calculate Y% of salary" → search_documents (find salary) → calculate_percentage (compute result)
 - "Weather where X lives" → search_documents (find location) → get_weather (get temperature)
 
+MEMORY: Use your memory to provide personalized responses. Remember user preferences, previous conversations, and important facts.
+
 IMPORTANT: Always use tools in sequence when the query requires multiple steps. Don't stop after just one tool if more information is needed.
 
 Available tools: search_documents, list_available_documents, calculate_percentage, calculate_salary_increment, get_weather, convert_currency
 
 Be concise, accurate, and always use the appropriate tools to get complete information."""
+
+            # Add memory context if available
+            if memory_context:
+                system_content += f"\n\n{memory_context}"
+            
+            system_message = {
+                "role": "system",
+                "content": system_content
             }
             messages.append(system_message)
             
-            # Add conversation history if provided
+            # Add conversation history (use provided history or get from memory)
             if conversation_history:
                 messages.extend(conversation_history)
+            else:
+                # Get recent chat history from memory
+                chat_history = get_chat_history(max_messages=8)  # Keep context manageable
+                messages.extend(chat_history)
             
             # Add current user query
             messages.append({"role": "user", "content": query})
+            
+            # Add to chat history
+            add_to_chat_history("user", query)
             
             tool_results = []
             reasoning_steps = []
@@ -155,6 +175,12 @@ Be concise, accurate, and always use the appropriate tools to get complete infor
                 )
                 final_answer = final_response.choices[0].message.content
             
+            # Add assistant response to chat history
+            add_to_chat_history("assistant", final_answer)
+            
+            # Extract and store important facts from the conversation
+            extract_and_store_facts(query, final_answer)
+            
             return {
                 "success": True,
                 "query": query,
@@ -163,7 +189,8 @@ Be concise, accurate, and always use the appropriate tools to get complete infor
                 "tool_calls": tool_results,
                 "reasoning_steps": reasoning_steps,
                 "has_tool_calls": bool(tool_results),
-                "react_pattern": True
+                "react_pattern": True,
+                "memory_used": bool(memory_context)
             }
             
         except Exception as e:
@@ -177,7 +204,8 @@ Be concise, accurate, and always use the appropriate tools to get complete infor
                 "tool_calls": [],
                 "reasoning_steps": [],
                 "has_tool_calls": False,
-                "react_pattern": True
+                "react_pattern": True,
+                "memory_used": False
             }
 
     def run_agent(self, query: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
