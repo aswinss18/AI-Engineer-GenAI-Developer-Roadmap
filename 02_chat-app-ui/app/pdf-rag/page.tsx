@@ -92,6 +92,7 @@ export default function PDFRagPage() {
     const [processingStatus, setProcessingStatus] = useState("");
     const [persistenceStatus, setPersistenceStatus] = useState<any>(null);
     const [showPersistencePanel, setShowPersistencePanel] = useState(false);
+    const [memoryStatus, setMemoryStatus] = useState<any>(null);
     const [agentMode, setAgentMode] = useState(false); // New state for agent mode
     const bottomRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
@@ -114,6 +115,91 @@ export default function PDFRagPage() {
             }
         } catch (error) {
             console.error('Persistence status check error:', error);
+        }
+    };
+
+    const checkMemoryStatus = async () => {
+        try {
+            const res = await fetch('http://localhost:8000/memory/status');
+            if (res.ok) {
+                const data = await res.json();
+                setMemoryStatus(data.memory_stats);
+            }
+        } catch (error) {
+            console.error('Memory status check error:', error);
+        }
+    };
+
+    const clearChatMemory = async () => {
+        try {
+            const res = await fetch('http://localhost:8000/memory/clear-chat', {
+                method: 'POST'
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMessages([{ 
+                    role: "ai", 
+                    content: `✅ ${data.message}\n\nChat history has been cleared. The agent will start fresh without previous conversation context.` 
+                }]);
+                // Refresh memory status
+                setTimeout(checkMemoryStatus, 1000);
+            }
+        } catch (error) {
+            console.error('Clear chat memory error:', error);
+            setMessages([{ 
+                role: "ai", 
+                content: "❌ Error clearing chat memory. Please check if the backend is running." 
+            }]);
+        }
+    };
+
+    const clearAllMemory = async () => {
+        if (!confirm('⚠️ This will permanently delete ALL agent memory (chat history + stored facts). Are you sure?')) {
+            return;
+        }
+        
+        try {
+            const res = await fetch('http://localhost:8000/memory/clear-all', {
+                method: 'POST'
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMessages([{ 
+                    role: "ai", 
+                    content: `✅ ${data.message}\n\nAll agent memory has been permanently cleared. The agent will start completely fresh.` 
+                }]);
+                // Refresh memory status
+                setTimeout(checkMemoryStatus, 1000);
+            }
+        } catch (error) {
+            console.error('Clear all memory error:', error);
+            setMessages([{ 
+                role: "ai", 
+                content: "❌ Error clearing all memory. Please check if the backend is running." 
+            }]);
+        }
+    };
+
+    const cleanupOldMemories = async () => {
+        try {
+            const res = await fetch('http://localhost:8000/memory/cleanup', {
+                method: 'POST'
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMessages([{ 
+                    role: "ai", 
+                    content: `✅ ${data.message}\n\nOld memories have been cleaned up and decay has been applied to aging memories.` 
+                }]);
+                // Refresh memory status
+                setTimeout(checkMemoryStatus, 1000);
+            }
+        } catch (error) {
+            console.error('Memory cleanup error:', error);
+            setMessages([{ 
+                role: "ai", 
+                content: "❌ Error cleaning up memories. Please check if the backend is running." 
+            }]);
         }
     };
 
@@ -741,7 +827,10 @@ export default function PDFRagPage() {
                 <button
                     onClick={() => {
                         setShowPersistencePanel(!showPersistencePanel);
-                        if (!showPersistencePanel) checkPersistenceStatus();
+                        if (!showPersistencePanel) {
+                            checkPersistenceStatus();
+                            checkMemoryStatus();
+                        }
                     }}
                     style={{
                         background: "rgba(59, 130, 246, 0.1)",
@@ -792,10 +881,13 @@ export default function PDFRagPage() {
                             alignItems: "center",
                             gap: "0.5rem"
                         }}>
-                            💾 Persistence Status
+                            💾 System Management
                         </h3>
                         <button
-                            onClick={checkPersistenceStatus}
+                            onClick={() => {
+                                checkPersistenceStatus();
+                                checkMemoryStatus();
+                            }}
                             style={{
                                 background: "transparent",
                                 border: "1px solid var(--border)",
@@ -936,6 +1028,186 @@ export default function PDFRagPage() {
                             Loading persistence status...
                         </div>
                     )}
+
+                    {/* Memory Management Section */}
+                    <div style={{ 
+                        borderTop: "1px solid var(--border)", 
+                        paddingTop: "1rem", 
+                        marginTop: "1rem" 
+                    }}>
+                        <h4 style={{ 
+                            fontSize: "0.85rem", 
+                            fontWeight: 600, 
+                            color: "var(--fg)",
+                            margin: "0 0 0.75rem 0",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem"
+                        }}>
+                            🧠 Agent Memory System
+                        </h4>
+
+                        {memoryStatus ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                                {/* Memory Stats Grid */}
+                                <div style={{ 
+                                    display: "grid", 
+                                    gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", 
+                                    gap: "0.5rem",
+                                    fontSize: "0.75rem"
+                                }}>
+                                    <div style={{
+                                        background: "rgba(0,0,0,0.2)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: "var(--radius-sm)",
+                                        padding: "0.5rem",
+                                        textAlign: "center"
+                                    }}>
+                                        <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                            {memoryStatus.chat_history_length || 0}
+                                        </div>
+                                        <div style={{ color: "var(--muted)" }}>Chat History</div>
+                                    </div>
+                                    <div style={{
+                                        background: "rgba(0,0,0,0.2)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: "var(--radius-sm)",
+                                        padding: "0.5rem",
+                                        textAlign: "center"
+                                    }}>
+                                        <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                            {memoryStatus.stored_memories || 0}
+                                        </div>
+                                        <div style={{ color: "var(--muted)" }}>Stored Facts</div>
+                                    </div>
+                                    <div style={{
+                                        background: "rgba(0,0,0,0.2)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: "var(--radius-sm)",
+                                        padding: "0.5rem",
+                                        textAlign: "center"
+                                    }}>
+                                        <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                            {memoryStatus.average_importance ? memoryStatus.average_importance.toFixed(2) : "0.00"}
+                                        </div>
+                                        <div style={{ color: "var(--muted)" }}>Avg Importance</div>
+                                    </div>
+                                    <div style={{
+                                        background: "rgba(0,0,0,0.2)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: "var(--radius-sm)",
+                                        padding: "0.5rem",
+                                        textAlign: "center"
+                                    }}>
+                                        <div style={{ 
+                                            color: memoryStatus.scoring_system === "advanced_ranking_enabled" ? "#4ade80" : "#f87171", 
+                                            fontWeight: 600 
+                                        }}>
+                                            {memoryStatus.scoring_system === "advanced_ranking_enabled" ? "✅" : "❌"}
+                                        </div>
+                                        <div style={{ color: "var(--muted)" }}>Advanced Scoring</div>
+                                    </div>
+                                </div>
+
+                                {/* Memory Distribution */}
+                                {memoryStatus.importance_distribution && (
+                                    <div style={{ fontSize: "0.75rem" }}>
+                                        <div style={{ color: "var(--muted)", marginBottom: "0.25rem" }}>Memory Quality Distribution:</div>
+                                        <div style={{ display: "flex", gap: "0.5rem", fontSize: "0.7rem" }}>
+                                            <span style={{ color: "#4ade80" }}>
+                                                High: {memoryStatus.importance_distribution.high || 0}
+                                            </span>
+                                            <span style={{ color: "#fbbf24" }}>
+                                                Medium: {memoryStatus.importance_distribution.medium || 0}
+                                            </span>
+                                            <span style={{ color: "#f87171" }}>
+                                                Low: {memoryStatus.importance_distribution.low || 0}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Memory Actions */}
+                                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                                    <button
+                                        onClick={clearChatMemory}
+                                        style={{
+                                            background: "rgba(251, 191, 36, 0.1)",
+                                            border: "1px solid rgba(251, 191, 36, 0.3)",
+                                            color: "#fbbf24",
+                                            cursor: "pointer",
+                                            fontSize: "0.7rem",
+                                            padding: "0.3rem 0.6rem",
+                                            borderRadius: "var(--radius-sm)",
+                                            transition: "all 0.15s",
+                                            fontWeight: 600,
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(251, 191, 36, 0.15)";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(251, 191, 36, 0.1)";
+                                        }}
+                                    >
+                                        💬 Clear Chat
+                                    </button>
+                                    <button
+                                        onClick={cleanupOldMemories}
+                                        style={{
+                                            background: "rgba(59, 130, 246, 0.1)",
+                                            border: "1px solid rgba(59, 130, 246, 0.3)",
+                                            color: "#3b82f6",
+                                            cursor: "pointer",
+                                            fontSize: "0.7rem",
+                                            padding: "0.3rem 0.6rem",
+                                            borderRadius: "var(--radius-sm)",
+                                            transition: "all 0.15s",
+                                            fontWeight: 600,
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(59, 130, 246, 0.15)";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(59, 130, 246, 0.1)";
+                                        }}
+                                    >
+                                        🧹 Cleanup Old
+                                    </button>
+                                    <button
+                                        onClick={clearAllMemory}
+                                        style={{
+                                            background: "rgba(239, 68, 68, 0.1)",
+                                            border: "1px solid rgba(239, 68, 68, 0.3)",
+                                            color: "#ef4444",
+                                            cursor: "pointer",
+                                            fontSize: "0.7rem",
+                                            padding: "0.3rem 0.6rem",
+                                            borderRadius: "var(--radius-sm)",
+                                            transition: "all 0.15s",
+                                            fontWeight: 600,
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(239, 68, 68, 0.15)";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(239, 68, 68, 0.1)";
+                                        }}
+                                    >
+                                        🗑️ Clear All Memory
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ 
+                                textAlign: "center", 
+                                color: "var(--muted)", 
+                                fontSize: "0.8rem",
+                                padding: "0.5rem"
+                            }}>
+                                Loading memory status...
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 

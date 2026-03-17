@@ -10,6 +10,8 @@ from datetime import datetime
 import faiss
 from .embeddings import get_embedding
 import os
+import time
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +104,16 @@ class AgentMemory:
         return [{"role": msg["role"], "content": msg["content"]} for msg in recent_history]
     
     def store_memory(self, text: str, memory_type: str = "fact", metadata: Optional[Dict[str, Any]] = None):
-        """Store important information in long-term memory"""
+        """Store important information in long-term memory with scoring"""
         try:
+            # Calculate importance score
+            importance_score = self.calculate_importance(text)
+            
+            # Only store if importance is above threshold
+            if importance_score < 0.6:
+                logger.debug(f"Skipping low-importance memory: {text[:50]}... (score: {importance_score:.2f})")
+                return
+            
             # Get embedding for the text
             embedding = get_embedding(text)
             embedding_array = np.array([embedding]).astype('float32')
@@ -111,11 +121,14 @@ class AgentMemory:
             # Normalize for cosine similarity
             faiss.normalize_L2(embedding_array)
             
-            # Create memory entry
+            # Create memory entry with scoring
             memory_entry = {
                 "text": text,
                 "type": memory_type,
-                "timestamp": datetime.now().isoformat(),
+                "importance": importance_score,
+                "timestamp": time.time(),
+                "access_count": 0,
+                "last_accessed": time.time(),
                 "metadata": metadata or {}
             }
             
@@ -126,115 +139,246 @@ class AgentMemory:
             # Save to disk
             self._save_memory()
             
-            logger.info(f"Stored memory: {text[:50]}...")
+            logger.info(f"Stored memory (importance: {importance_score:.2f}): {text[:50]}...")
             
         except Exception as e:
             logger.error(f"Error storing memory: {e}")
     
     def retrieve_memory(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Retrieve relevant memories based on query with improved scoring"""
+        """
+        Advanced memory retrieval with Store → Score → Rank → Retrieve → Inject architecture
+        Uses combined similarity + importance + recency scoring like ChatGPT/Notion AI
+        """
         try:
             if len(self.memory_store) == 0:
                 return []
-            
+
             # Get query embedding
             query_embedding = get_embedding(query)
             query_array = np.array([query_embedding]).astype('float32')
-            
+
             # Normalize for cosine similarity
             faiss.normalize_L2(query_array)
-            
-            # Search for similar memories
-            k = min(k, len(self.memory_store))  # Don't search for more than available
-            scores, indices = self.memory_index.search(query_array, k)
-            
-            # Return relevant memories with improved scoring
-            relevant_memories = []
-            for i, idx in enumerate(indices[0]):
-                if idx != -1:
-                    similarity_score = float(scores[0][i])
-                    
-                    # Improved threshold based on memory type and recency
-                    memory = self.memory_store[idx].copy()
-                    memory_type = memory.get("type", "unknown")
-                    
-                    # Different thresholds for different memory types
-                    threshold = 0.7  # Default threshold
-                    if memory_type == "fact":
-                        threshold = 0.65  # Lower threshold for facts
-                    elif memory_type == "preference":
-                        threshold = 0.75  # Higher threshold for preferences
-                    
-                    # Boost score for recent memories
-                    try:
-                        from datetime import datetime, timedelta
-                        memory_time = datetime.fromisoformat(memory["timestamp"])
-                        age_days = (datetime.now() - memory_time).days
-                        
-                        # Boost recent memories (within 7 days)
-                        if age_days <= 7:
-                            similarity_score *= 1.1  # 10% boost for recent memories
-                    except:
-                        pass  # Skip if timestamp parsing fails
-                    
-                    if similarity_score > threshold:
-                        memory["similarity_score"] = similarity_score
-                        relevant_memories.append(memory)
-            
-            # Sort by similarity score (highest first)
-            relevant_memories.sort(key=lambda x: x["similarity_score"], reverse=True)
-            
-            logger.info(f"Retrieved {len(relevant_memories)} relevant memories for query")
-            return relevant_memories
-            
+
+            # Search for more memories than needed for better ranking
+            search_k = min(k * 3, len(self.memory_store))  # Search 3x more for better ranking
+            scores, indices = self.memory_index.search(query_array, search_k)
+
+            # Advanced ranking with combined scoring
+            ranked_memories = self._rank_memories(query, scores[0], indices[0])
+
+            # Return top k memories
+            top_memories = ranked_memories[:k]
+
+            # Update access counts for retrieved memories
+            for memory in top_memories:
+                memory["access_count"] = memory.get("access_count", 0) + 1
+                memory["last_accessed"] = time.time()
+
+            # Save updated access counts
+            self._save_memory()
+
+            logger.info(f"Retrieved {len(top_memories)} memories using advanced ranking")
+            return top_memories
+
         except Exception as e:
             logger.error(f"Error retrieving memory: {e}")
             return []
     
+    def _rank_memories(self, query: str, similarity_scores: np.ndarray, indices: np.ndarray) -> List[Dict[str, Any]]:
+        """
+        Advanced memory ranking system: similarity + importance + recency + access_frequency
+        
+        Args:
+            query: User query for context-aware scoring
+            similarity_scores: FAISS similarity scores
+            indices: Memory indices from FAISS search
+            
+        Returns:
+            Ranked list of memories with combined scores
+        """
+        try:
+            current_time = time.time()
+            ranked_memories = []
+            
+            for i, idx in enumerate(indices):
+                if idx == -1:  # Invalid index
+                    continue
+                    
+                memory = self.memory_store[idx].copy()
+                similarity = float(similarity_scores[i])
+                
+                # Skip very low similarity memories
+                if similarity < 0.3:
+                    continue
+                
+                # 1. Similarity Score (0.0 - 1.0)
+                similarity_score = similarity
+                
+                # 2. Importance Score (already calculated, 0.0 - 1.0)
+                importance_score = memory.get("importance", 0.5)
+                
+                # 3. Recency Score (0.0 - 1.0)
+                memory_timestamp = memory.get("timestamp", current_time)
+                age_seconds = current_time - memory_timestamp
+                age_days = age_seconds / (24 * 60 * 60)
+                
+                # Exponential decay for recency (fresh memories get higher scores)
+                if age_days <= 1:
+                    recency_score = 1.0  # Very recent
+                elif age_days <= 7:
+                    recency_score = 0.8  # Recent
+                elif age_days <= 30:
+                    recency_score = 0.6  # Somewhat recent
+                elif age_days <= 90:
+                    recency_score = 0.4  # Old
+                else:
+                    recency_score = 0.2  # Very old
+                
+                # 4. Access Frequency Score (0.0 - 1.0)
+                access_count = memory.get("access_count", 0)
+                # Normalize access count (cap at 10 for scoring)
+                frequency_score = min(access_count / 10.0, 1.0)
+                
+                # 5. Context Relevance Boost
+                context_boost = 0.0
+                query_lower = query.lower()
+                memory_text_lower = memory["text"].lower()
+                
+                # Boost for exact keyword matches
+                query_words = set(query_lower.split())
+                memory_words = set(memory_text_lower.split())
+                common_words = query_words.intersection(memory_words)
+                if common_words:
+                    context_boost = min(len(common_words) * 0.1, 0.3)  # Max 0.3 boost
+                
+                # 6. Memory Type Boost
+                memory_type = memory.get("type", "other")
+                type_boost = 0.0
+                if memory_type == "fact":
+                    type_boost = 0.1  # Facts are generally important
+                elif memory_type == "preference":
+                    type_boost = 0.05  # Preferences are moderately important
+                
+                # Combined Score Calculation (weighted average)
+                # Weights: similarity=40%, importance=30%, recency=15%, frequency=10%, context=5%
+                combined_score = (
+                    0.40 * similarity_score +
+                    0.30 * importance_score +
+                    0.15 * recency_score +
+                    0.10 * frequency_score +
+                    0.05 * context_boost
+                ) + type_boost
+                
+                # Cap at 1.0
+                combined_score = min(combined_score, 1.0)
+                
+                # Only include memories above threshold
+                if combined_score > 0.5:  # Minimum threshold for relevance
+                    memory["similarity_score"] = similarity_score
+                    memory["importance_score"] = importance_score
+                    memory["recency_score"] = recency_score
+                    memory["frequency_score"] = frequency_score
+                    memory["context_boost"] = context_boost
+                    memory["combined_score"] = combined_score
+                    memory["age_days"] = age_days
+                    
+                    ranked_memories.append(memory)
+            
+            # Sort by combined score (highest first)
+            ranked_memories.sort(key=lambda x: x["combined_score"], reverse=True)
+            
+            logger.info(f"Ranked {len(ranked_memories)} memories using advanced scoring")
+            return ranked_memories
+            
+        except Exception as e:
+            logger.error(f"Error ranking memories: {e}")
+            return []
+
+    
+    def calculate_importance(self, text: str) -> float:
+        """
+        Calculate importance score for memory text (0.0 to 1.0)
+        
+        Args:
+            text: Text to score
+            
+        Returns:
+            Importance score between 0.0 and 1.0
+        """
+        try:
+            # Base score
+            score = 0.3
+            
+            # High importance keywords (0.3 each, max 0.9)
+            high_importance = [
+                "salary", "income", "pay", "money", "cost", "price", "budget",
+                "name", "location", "address", "live", "work", "job", "company",
+                "goal", "objective", "target", "plan", "strategy", "important"
+            ]
+            
+            # Medium importance keywords (0.2 each, max 0.6)
+            medium_importance = [
+                "skill", "experience", "education", "degree", "certification",
+                "prefer", "like", "favorite", "dislike", "hate", "want", "need",
+                "project", "team", "manager", "colleague", "client", "customer"
+            ]
+            
+            # Low importance keywords (0.1 each, max 0.3)
+            low_importance = [
+                "weather", "temperature", "condition", "time", "date", "today",
+                "yesterday", "tomorrow", "week", "month", "year", "season"
+            ]
+            
+            text_lower = text.lower()
+            
+            # Score based on keyword presence
+            for keyword in high_importance:
+                if keyword in text_lower:
+                    score += 0.3
+            
+            for keyword in medium_importance:
+                if keyword in text_lower:
+                    score += 0.2
+            
+            for keyword in low_importance:
+                if keyword in text_lower:
+                    score += 0.1
+            
+            # Boost for numerical data (likely important facts)
+            if re.search(r'\d+', text):
+                score += 0.1
+            
+            # Boost for currency symbols (financial data)
+            if any(symbol in text for symbol in ['₹', '$', '€', '£', '¥']):
+                score += 0.2
+            
+            # Boost for personal pronouns (personal information)
+            personal_pronouns = ['my', 'i am', 'i work', 'i live', 'i like', 'i prefer']
+            if any(pronoun in text_lower for pronoun in personal_pronouns):
+                score += 0.15
+            
+            # Penalty for very short text (likely not important)
+            if len(text.split()) < 3:
+                score *= 0.7
+            
+            # Boost for longer, detailed text
+            if len(text.split()) > 10:
+                score += 0.1
+            
+            # Cap at 1.0
+            return min(score, 1.0)
+            
+        except Exception as e:
+            logger.error(f"Error calculating importance: {e}")
+            return 0.5  # Default medium importance
     def should_store_memory(self, text: str) -> bool:
         """
         Determine if text contains important information worth storing
-        
-        Args:
-            text: Text to evaluate
-            
-        Returns:
-            Boolean indicating if text should be stored
+        Uses importance scoring - only store if importance > 0.6
         """
-        # Important keywords that indicate valuable information
-        important_keywords = [
-            # Personal information
-            "name", "live", "work", "job", "profession", "age", "born",
-            # Financial information  
-            "salary", "income", "pay", "earn", "money", "cost", "price", "budget",
-            # Location information
-            "location", "city", "country", "address", "bangalore", "mumbai", "delhi",
-            # Preferences and opinions
-            "like", "prefer", "favorite", "hate", "dislike", "want", "need",
-            # Skills and experience
-            "skill", "experience", "expert", "good at", "know", "learned",
-            # Important facts
-            "temperature", "weather", "company", "project", "team", "manager"
-        ]
-        
-        # Convert to lowercase for matching
-        text_lower = text.lower()
-        
-        # Check for important keywords
-        has_keywords = any(keyword in text_lower for keyword in important_keywords)
-        
-        # Filter out common conversational phrases
-        ignore_phrases = [
-            "hello", "hi", "how are you", "thank you", "thanks", "bye", "goodbye",
-            "yes", "no", "ok", "okay", "sure", "maybe", "i think", "i guess",
-            "what", "when", "where", "why", "how", "can you", "please", "sorry"
-        ]
-        
-        # Don't store if it's just a common phrase
-        is_common_phrase = any(phrase in text_lower for phrase in ignore_phrases) and len(text.split()) < 5
-        
-        # Store if it has important keywords and isn't just a common phrase
-        return has_keywords and not is_common_phrase
+        importance = self.calculate_importance(text)
+        return importance > 0.6
     def extract_and_store_facts(self, conversation: str, response: str):
         """Extract and store important facts from conversation"""
         try:
@@ -379,7 +523,7 @@ class AgentMemory:
         logger.info("All memory cleared")
     
     def get_memory_stats(self) -> Dict[str, Any]:
-        """Get comprehensive memory system statistics"""
+        """Get comprehensive memory system statistics with advanced scoring info"""
         try:
             # Basic stats
             stats = {
@@ -393,6 +537,13 @@ class AgentMemory:
                 memory_types = {}
                 confidence_levels = {}
                 sources = {}
+                importance_distribution = {"high": 0, "medium": 0, "low": 0}
+                access_frequency = {"frequent": 0, "occasional": 0, "rare": 0}
+                age_distribution = {"recent": 0, "old": 0, "very_old": 0}
+                
+                current_time = time.time()
+                total_importance = 0
+                total_access_count = 0
                 
                 for memory in self.memory_store:
                     # Count memory types
@@ -406,13 +557,53 @@ class AgentMemory:
                     # Count sources
                     source = memory.get("metadata", {}).get("source", "unknown")
                     sources[source] = sources.get(source, 0) + 1
+                    
+                    # Importance distribution
+                    importance = memory.get("importance", 0.5)
+                    total_importance += importance
+                    if importance >= 0.8:
+                        importance_distribution["high"] += 1
+                    elif importance >= 0.6:
+                        importance_distribution["medium"] += 1
+                    else:
+                        importance_distribution["low"] += 1
+                    
+                    # Access frequency distribution
+                    access_count = memory.get("access_count", 0)
+                    total_access_count += access_count
+                    if access_count >= 5:
+                        access_frequency["frequent"] += 1
+                    elif access_count >= 2:
+                        access_frequency["occasional"] += 1
+                    else:
+                        access_frequency["rare"] += 1
+                    
+                    # Age distribution
+                    memory_timestamp = memory.get("timestamp", current_time)
+                    age_days = (current_time - memory_timestamp) / (24 * 60 * 60)
+                    if age_days <= 7:
+                        age_distribution["recent"] += 1
+                    elif age_days <= 30:
+                        age_distribution["old"] += 1
+                    else:
+                        age_distribution["very_old"] += 1
+                
+                # Calculate averages
+                avg_importance = total_importance / len(self.memory_store)
+                avg_access_count = total_access_count / len(self.memory_store)
                 
                 stats.update({
                     "memory_types": memory_types,
                     "confidence_distribution": confidence_levels,
                     "source_distribution": sources,
+                    "importance_distribution": importance_distribution,
+                    "access_frequency_distribution": access_frequency,
+                    "age_distribution": age_distribution,
+                    "average_importance": round(avg_importance, 3),
+                    "average_access_count": round(avg_access_count, 2),
                     "oldest_memory": self.memory_store[0]["timestamp"],
-                    "newest_memory": self.memory_store[-1]["timestamp"]
+                    "newest_memory": self.memory_store[-1]["timestamp"],
+                    "scoring_system": "advanced_ranking_enabled"
                 })
             
             # Recent activity
@@ -427,29 +618,41 @@ class AgentMemory:
             return {"error": str(e)}
     
     def cleanup_old_memories(self, days_to_keep: int = 30):
-        """Remove memories older than specified days"""
+        """
+        Advanced memory cleanup with decay functionality
+        Removes memories older than specified days and applies decay to aging memories
+        """
         try:
-            from datetime import datetime, timedelta
-            cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+            current_time = time.time()
+            cutoff_timestamp = current_time - (days_to_keep * 24 * 60 * 60)
             
-            # Find memories to keep
+            # Find memories to keep with decay applied
             memories_to_keep = []
             indices_to_keep = []
+            decay_applied_count = 0
             
             for i, memory in enumerate(self.memory_store):
-                try:
-                    memory_date = datetime.fromisoformat(memory["timestamp"])
-                    if memory_date > cutoff_date:
-                        memories_to_keep.append(memory)
-                        indices_to_keep.append(i)
-                except:
-                    # Keep memories with invalid timestamps
+                memory_timestamp = memory.get("timestamp", current_time)
+                age_seconds = current_time - memory_timestamp
+                age_days = age_seconds / (24 * 60 * 60)
+                
+                # Apply memory decay based on age
+                original_importance = memory.get("importance", 0.5)
+                decayed_importance = self._apply_memory_decay(original_importance, age_days)
+                
+                # Update importance if decay was applied
+                if decayed_importance != original_importance:
+                    memory["importance"] = decayed_importance
+                    decay_applied_count += 1
+                
+                # Keep memory if it's recent enough OR still important after decay
+                if memory_timestamp > cutoff_timestamp or decayed_importance > 0.3:
                     memories_to_keep.append(memory)
                     indices_to_keep.append(i)
             
             removed_count = len(self.memory_store) - len(memories_to_keep)
             
-            if removed_count > 0:
+            if removed_count > 0 or decay_applied_count > 0:
                 # Rebuild memory store and index
                 self.memory_store = memories_to_keep
                 
@@ -471,14 +674,65 @@ class AgentMemory:
                 # Save updated memory
                 self._save_memory()
                 
-                logger.info(f"Cleaned up {removed_count} old memories, kept {len(memories_to_keep)}")
-                return {"removed": removed_count, "kept": len(memories_to_keep)}
+                logger.info(f"Memory cleanup: removed {removed_count} old memories, applied decay to {decay_applied_count} memories, kept {len(memories_to_keep)}")
+                return {
+                    "removed": removed_count, 
+                    "kept": len(memories_to_keep),
+                    "decay_applied": decay_applied_count
+                }
             
-            return {"removed": 0, "kept": len(self.memory_store)}
+            return {
+                "removed": 0, 
+                "kept": len(self.memory_store),
+                "decay_applied": 0
+            }
             
         except Exception as e:
             logger.error(f"Error cleaning up memories: {e}")
             return {"error": str(e)}
+    
+    def _apply_memory_decay(self, importance: float, age_days: float) -> float:
+        """
+        Apply memory decay based on age - older memories become less important
+        
+        Args:
+            importance: Original importance score (0.0 - 1.0)
+            age_days: Age of memory in days
+            
+        Returns:
+            Decayed importance score
+        """
+        try:
+            # No decay for very recent memories (< 1 day)
+            if age_days < 1:
+                return importance
+            
+            # Gradual decay based on age
+            if age_days <= 7:  # 1-7 days: minimal decay
+                decay_factor = 0.95
+            elif age_days <= 30:  # 1-4 weeks: moderate decay
+                decay_factor = 0.85
+            elif age_days <= 90:  # 1-3 months: significant decay
+                decay_factor = 0.70
+            elif age_days <= 180:  # 3-6 months: heavy decay
+                decay_factor = 0.50
+            else:  # > 6 months: very heavy decay
+                decay_factor = 0.30
+            
+            # Apply decay
+            decayed_importance = importance * decay_factor
+            
+            # Ensure minimum threshold for very important memories
+            if importance > 0.9:  # Very important memories decay slower
+                decayed_importance = max(decayed_importance, 0.6)
+            elif importance > 0.8:  # Important memories
+                decayed_importance = max(decayed_importance, 0.4)
+            
+            return max(decayed_importance, 0.0)  # Never go below 0
+            
+        except Exception as e:
+            logger.error(f"Error applying memory decay: {e}")
+            return importance  # Return original if error
 
 # Global memory instance
 agent_memory = AgentMemory()
@@ -499,6 +753,116 @@ def store_memory(text: str, memory_type: str = "fact", metadata: Optional[Dict[s
 def retrieve_memory(query: str, k: int = 3) -> List[Dict[str, Any]]:
     """Retrieve relevant memories"""
     return agent_memory.retrieve_memory(query, k)
+
+def _rank_memories(self, query: str, similarity_scores: np.ndarray, indices: np.ndarray) -> List[Dict[str, Any]]:
+    """
+    Advanced memory ranking system: similarity + importance + recency + access_frequency
+
+    Args:
+        query: User query for context-aware scoring
+        similarity_scores: FAISS similarity scores
+        indices: Memory indices from FAISS search
+
+    Returns:
+        Ranked list of memories with combined scores
+    """
+    try:
+        current_time = time.time()
+        ranked_memories = []
+
+        for i, idx in enumerate(indices):
+            if idx == -1:  # Invalid index
+                continue
+
+            memory = self.memory_store[idx].copy()
+            similarity = float(similarity_scores[i])
+
+            # Skip very low similarity memories
+            if similarity < 0.3:
+                continue
+
+            # 1. Similarity Score (0.0 - 1.0)
+            similarity_score = similarity
+
+            # 2. Importance Score (already calculated, 0.0 - 1.0)
+            importance_score = memory.get("importance", 0.5)
+
+            # 3. Recency Score (0.0 - 1.0)
+            memory_timestamp = memory.get("timestamp", current_time)
+            age_seconds = current_time - memory_timestamp
+            age_days = age_seconds / (24 * 60 * 60)
+
+            # Exponential decay for recency (fresh memories get higher scores)
+            if age_days <= 1:
+                recency_score = 1.0  # Very recent
+            elif age_days <= 7:
+                recency_score = 0.8  # Recent
+            elif age_days <= 30:
+                recency_score = 0.6  # Somewhat recent
+            elif age_days <= 90:
+                recency_score = 0.4  # Old
+            else:
+                recency_score = 0.2  # Very old
+
+            # 4. Access Frequency Score (0.0 - 1.0)
+            access_count = memory.get("access_count", 0)
+            # Normalize access count (cap at 10 for scoring)
+            frequency_score = min(access_count / 10.0, 1.0)
+
+            # 5. Context Relevance Boost
+            context_boost = 0.0
+            query_lower = query.lower()
+            memory_text_lower = memory["text"].lower()
+
+            # Boost for exact keyword matches
+            query_words = set(query_lower.split())
+            memory_words = set(memory_text_lower.split())
+            common_words = query_words.intersection(memory_words)
+            if common_words:
+                context_boost = min(len(common_words) * 0.1, 0.3)  # Max 0.3 boost
+
+            # 6. Memory Type Boost
+            memory_type = memory.get("type", "other")
+            type_boost = 0.0
+            if memory_type == "fact":
+                type_boost = 0.1  # Facts are generally important
+            elif memory_type == "preference":
+                type_boost = 0.05  # Preferences are moderately important
+
+            # Combined Score Calculation (weighted average)
+            # Weights: similarity=40%, importance=30%, recency=15%, frequency=10%, context=5%
+            combined_score = (
+                0.40 * similarity_score +
+                0.30 * importance_score +
+                0.15 * recency_score +
+                0.10 * frequency_score +
+                0.05 * context_boost
+            ) + type_boost
+
+            # Cap at 1.0
+            combined_score = min(combined_score, 1.0)
+
+            # Only include memories above threshold
+            if combined_score > 0.5:  # Minimum threshold for relevance
+                memory["similarity_score"] = similarity_score
+                memory["importance_score"] = importance_score
+                memory["recency_score"] = recency_score
+                memory["frequency_score"] = frequency_score
+                memory["context_boost"] = context_boost
+                memory["combined_score"] = combined_score
+                memory["age_days"] = age_days
+
+                ranked_memories.append(memory)
+
+        # Sort by combined score (highest first)
+        ranked_memories.sort(key=lambda x: x["combined_score"], reverse=True)
+
+        logger.info(f"Ranked {len(ranked_memories)} memories using advanced scoring")
+        return ranked_memories
+
+    except Exception as e:
+        logger.error(f"Error ranking memories: {e}")
+        return []
 
 def get_memory_context(query: str) -> str:
     """Get memory context for query"""

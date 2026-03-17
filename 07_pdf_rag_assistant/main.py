@@ -267,13 +267,31 @@ def clear_all_agent_memory():
 
 @app.post("/memory/cleanup")
 def cleanup_old_memories(days: int = 30):
-    """Clean up old memories (default: keep last 30 days)"""
+    """Clean up old memories with decay functionality (default: keep last 30 days)"""
     try:
         result = agent_memory.cleanup_old_memories(days)
         return {
             "success": True,
             "cleanup_result": result,
-            "message": f"Memory cleanup completed. Removed {result.get('removed', 0)} old memories."
+            "message": f"Memory cleanup completed. Removed {result.get('removed', 0)} old memories, applied decay to {result.get('decay_applied', 0)} memories."
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/memory/decay")
+def apply_memory_decay():
+    """Apply memory decay to all stored memories based on age"""
+    try:
+        # Apply decay by running cleanup with a very long retention period
+        # This will apply decay without removing memories
+        result = agent_memory.cleanup_old_memories(days_to_keep=365)  # Keep all memories but apply decay
+        return {
+            "success": True,
+            "decay_result": result,
+            "message": f"Memory decay applied to {result.get('decay_applied', 0)} memories."
         }
     except Exception as e:
         return {
