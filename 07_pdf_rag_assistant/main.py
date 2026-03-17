@@ -12,7 +12,7 @@ import json
 from core.rag_pipeline import process_pdf, ask_question, ask_question_stream, ask_question_stream_with_sources
 from core.vector_store import documents, clear_documents, load_persisted_state, get_persistence_status
 from core.agent import run_agent, run_agent_stream
-from core.memory import get_memory_stats, clear_chat_history, clear_all_memory
+from core.memory import get_memory_stats, clear_chat_history, clear_all_memory, agent_memory
 
 app = FastAPI()
 
@@ -258,6 +258,22 @@ def clear_all_agent_memory():
         return {
             "success": True,
             "message": "All agent memory cleared successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/memory/cleanup")
+def cleanup_old_memories(days: int = 30):
+    """Clean up old memories (default: keep last 30 days)"""
+    try:
+        result = agent_memory.cleanup_old_memories(days)
+        return {
+            "success": True,
+            "cleanup_result": result,
+            "message": f"Memory cleanup completed. Removed {result.get('removed', 0)} old memories."
         }
     except Exception as e:
         return {
