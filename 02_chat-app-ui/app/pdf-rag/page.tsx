@@ -80,6 +80,24 @@ interface Message {
     }>;
     react_pattern?: boolean;
     memory_used?: boolean;
+    memory_context_info?: {
+        memories_retrieved: number;
+        memories_used: Array<{
+            text: string;
+            importance: number;
+            confidence: string;
+            combined_score: number;
+            similarity_score: number;
+            recency_score: number;
+            access_count: number;
+            age_days: number;
+        }>;
+        system_stats: {
+            total_memories: number;
+            average_importance: number;
+            quality_score: number;
+        };
+    };
 }
 
 export default function PDFRagPage() {
@@ -93,6 +111,8 @@ export default function PDFRagPage() {
     const [persistenceStatus, setPersistenceStatus] = useState<any>(null);
     const [showPersistencePanel, setShowPersistencePanel] = useState(false);
     const [memoryStatus, setMemoryStatus] = useState<any>(null);
+    const [detailedMemoryInfo, setDetailedMemoryInfo] = useState<any>(null);
+    const [showDetailedMemory, setShowDetailedMemory] = useState(false);
     const [agentMode, setAgentMode] = useState(false); // New state for agent mode
     const bottomRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
@@ -127,6 +147,18 @@ export default function PDFRagPage() {
             }
         } catch (error) {
             console.error('Memory status check error:', error);
+        }
+    };
+
+    const checkDetailedMemoryInfo = async () => {
+        try {
+            const res = await fetch('http://localhost:8000/memory/detailed');
+            if (res.ok) {
+                const data = await res.json();
+                setDetailedMemoryInfo(data);
+            }
+        } catch (error) {
+            console.error('Detailed memory info error:', error);
         }
     };
 
@@ -300,6 +332,7 @@ export default function PDFRagPage() {
                                         last.reasoning_steps = data.reasoning_steps;
                                         last.react_pattern = data.react_pattern;
                                         last.memory_used = data.memory_used;
+                                        last.memory_context_info = data.memory_context_info;
                                         updated[updated.length - 1] = last;
                                         return updated;
                                     });
@@ -887,6 +920,9 @@ export default function PDFRagPage() {
                             onClick={() => {
                                 checkPersistenceStatus();
                                 checkMemoryStatus();
+                                if (showDetailedMemory) {
+                                    checkDetailedMemoryInfo();
+                                }
                             }}
                             style={{
                                 background: "transparent",
@@ -1107,25 +1143,194 @@ export default function PDFRagPage() {
                                         </div>
                                         <div style={{ color: "var(--muted)" }}>Advanced Scoring</div>
                                     </div>
+                                    <div style={{
+                                        background: "rgba(0,0,0,0.2)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: "var(--radius-sm)",
+                                        padding: "0.5rem",
+                                        textAlign: "center"
+                                    }}>
+                                        <div style={{ color: "var(--accent2)", fontWeight: 600 }}>
+                                            {memoryStatus.average_access_count ? memoryStatus.average_access_count.toFixed(1) : "0.0"}
+                                        </div>
+                                        <div style={{ color: "var(--muted)" }}>Avg Access</div>
+                                    </div>
+                                    <div style={{
+                                        background: "rgba(0,0,0,0.2)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: "var(--radius-sm)",
+                                        padding: "0.5rem",
+                                        textAlign: "center"
+                                    }}>
+                                        <div style={{ 
+                                            color: memoryStatus.confidence_distribution?.high > 0 ? "#4ade80" : 
+                                                   memoryStatus.confidence_distribution?.medium > 0 ? "#fbbf24" : "#f87171",
+                                            fontWeight: 600 
+                                        }}>
+                                            {memoryStatus.confidence_distribution?.high || 0}H/{memoryStatus.confidence_distribution?.medium || 0}M/{memoryStatus.confidence_distribution?.low || 0}L
+                                        </div>
+                                        <div style={{ color: "var(--muted)" }}>Confidence</div>
+                                    </div>
                                 </div>
 
-                                {/* Memory Distribution */}
-                                {memoryStatus.importance_distribution && (
-                                    <div style={{ fontSize: "0.75rem" }}>
-                                        <div style={{ color: "var(--muted)", marginBottom: "0.25rem" }}>Memory Quality Distribution:</div>
-                                        <div style={{ display: "flex", gap: "0.5rem", fontSize: "0.7rem" }}>
-                                            <span style={{ color: "#4ade80" }}>
-                                                High: {memoryStatus.importance_distribution.high || 0}
-                                            </span>
-                                            <span style={{ color: "#fbbf24" }}>
-                                                Medium: {memoryStatus.importance_distribution.medium || 0}
-                                            </span>
-                                            <span style={{ color: "#f87171" }}>
-                                                Low: {memoryStatus.importance_distribution.low || 0}
-                                            </span>
-                                        </div>
+                                {/* Detailed Memory Analytics */}
+                                <div style={{ 
+                                    background: "rgba(0,0,0,0.1)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "0.75rem",
+                                    fontSize: "0.75rem"
+                                }}>
+                                    <div style={{ 
+                                        fontWeight: 600, 
+                                        color: "var(--fg)", 
+                                        marginBottom: "0.5rem",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "0.5rem"
+                                    }}>
+                                        📊 Memory Quality Analytics
                                     </div>
-                                )}
+                                    
+                                    {/* Importance Distribution */}
+                                    {memoryStatus.importance_distribution && (
+                                        <div style={{ marginBottom: "0.5rem" }}>
+                                            <div style={{ color: "var(--muted)", marginBottom: "0.25rem" }}>
+                                                Importance Distribution:
+                                            </div>
+                                            <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.7rem" }}>
+                                                <div style={{ 
+                                                    display: "flex", 
+                                                    alignItems: "center", 
+                                                    gap: "0.25rem",
+                                                    background: "rgba(74, 222, 128, 0.1)",
+                                                    padding: "0.25rem 0.5rem",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    border: "1px solid rgba(74, 222, 128, 0.2)"
+                                                }}>
+                                                    <span style={{ color: "#4ade80", fontWeight: 600 }}>●</span>
+                                                    <span style={{ color: "var(--fg)" }}>
+                                                        High: {memoryStatus.importance_distribution.high || 0}
+                                                    </span>
+                                                </div>
+                                                <div style={{ 
+                                                    display: "flex", 
+                                                    alignItems: "center", 
+                                                    gap: "0.25rem",
+                                                    background: "rgba(251, 191, 36, 0.1)",
+                                                    padding: "0.25rem 0.5rem",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    border: "1px solid rgba(251, 191, 36, 0.2)"
+                                                }}>
+                                                    <span style={{ color: "#fbbf24", fontWeight: 600 }}>●</span>
+                                                    <span style={{ color: "var(--fg)" }}>
+                                                        Medium: {memoryStatus.importance_distribution.medium || 0}
+                                                    </span>
+                                                </div>
+                                                <div style={{ 
+                                                    display: "flex", 
+                                                    alignItems: "center", 
+                                                    gap: "0.25rem",
+                                                    background: "rgba(248, 113, 113, 0.1)",
+                                                    padding: "0.25rem 0.5rem",
+                                                    borderRadius: "var(--radius-sm)",
+                                                    border: "1px solid rgba(248, 113, 113, 0.2)"
+                                                }}>
+                                                    <span style={{ color: "#f87171", fontWeight: 600 }}>●</span>
+                                                    <span style={{ color: "var(--fg)" }}>
+                                                        Low: {memoryStatus.importance_distribution.low || 0}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Access Frequency Distribution */}
+                                    {memoryStatus.access_frequency_distribution && (
+                                        <div style={{ marginBottom: "0.5rem" }}>
+                                            <div style={{ color: "var(--muted)", marginBottom: "0.25rem" }}>
+                                                Access Frequency:
+                                            </div>
+                                            <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.7rem" }}>
+                                                <span style={{ color: "#4ade80" }}>
+                                                    Frequent: {memoryStatus.access_frequency_distribution.frequent || 0}
+                                                </span>
+                                                <span style={{ color: "#fbbf24" }}>
+                                                    Occasional: {memoryStatus.access_frequency_distribution.occasional || 0}
+                                                </span>
+                                                <span style={{ color: "#f87171" }}>
+                                                    Rare: {memoryStatus.access_frequency_distribution.rare || 0}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Age Distribution */}
+                                    {memoryStatus.age_distribution && (
+                                        <div style={{ marginBottom: "0.5rem" }}>
+                                            <div style={{ color: "var(--muted)", marginBottom: "0.25rem" }}>
+                                                Memory Age:
+                                            </div>
+                                            <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.7rem" }}>
+                                                <span style={{ color: "#4ade80" }}>
+                                                    Recent: {memoryStatus.age_distribution.recent || 0}
+                                                </span>
+                                                <span style={{ color: "#fbbf24" }}>
+                                                    Old: {memoryStatus.age_distribution.old || 0}
+                                                </span>
+                                                <span style={{ color: "#f87171" }}>
+                                                    Very Old: {memoryStatus.age_distribution.very_old || 0}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Memory Quality Score */}
+                                    {memoryStatus.importance_distribution && memoryStatus.stored_memories > 0 && (
+                                        <div style={{ 
+                                            marginTop: "0.5rem",
+                                            paddingTop: "0.5rem",
+                                            borderTop: "1px solid var(--border)"
+                                        }}>
+                                            <div style={{ color: "var(--muted)", marginBottom: "0.25rem" }}>
+                                                Memory Quality Score:
+                                            </div>
+                                            {(() => {
+                                                const total = memoryStatus.stored_memories;
+                                                const high = memoryStatus.importance_distribution.high || 0;
+                                                const medium = memoryStatus.importance_distribution.medium || 0;
+                                                const qualityScore = total > 0 ? ((high * 1.0 + medium * 0.6) / total * 100) : 0;
+                                                const qualityColor = qualityScore >= 80 ? "#4ade80" : 
+                                                                   qualityScore >= 60 ? "#fbbf24" : "#f87171";
+                                                const qualityLabel = qualityScore >= 80 ? "Excellent" :
+                                                                    qualityScore >= 60 ? "Good" : "Needs Improvement";
+                                                
+                                                return (
+                                                    <div style={{ 
+                                                        display: "flex", 
+                                                        alignItems: "center", 
+                                                        gap: "0.5rem",
+                                                        fontSize: "0.8rem"
+                                                    }}>
+                                                        <div style={{
+                                                            background: `${qualityColor}20`,
+                                                            border: `1px solid ${qualityColor}40`,
+                                                            color: qualityColor,
+                                                            padding: "0.25rem 0.5rem",
+                                                            borderRadius: "var(--radius-sm)",
+                                                            fontWeight: 600
+                                                        }}>
+                                                            {qualityScore.toFixed(1)}% {qualityLabel}
+                                                        </div>
+                                                        <div style={{ color: "var(--muted)", fontSize: "0.7rem" }}>
+                                                            Based on importance distribution
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* Memory Actions */}
                                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -1195,6 +1400,33 @@ export default function PDFRagPage() {
                                     >
                                         🗑️ Clear All Memory
                                     </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowDetailedMemory(!showDetailedMemory);
+                                            if (!showDetailedMemory) {
+                                                checkDetailedMemoryInfo();
+                                            }
+                                        }}
+                                        style={{
+                                            background: "rgba(139, 92, 246, 0.1)",
+                                            border: "1px solid rgba(139, 92, 246, 0.3)",
+                                            color: "#8b5cf6",
+                                            cursor: "pointer",
+                                            fontSize: "0.7rem",
+                                            padding: "0.3rem 0.6rem",
+                                            borderRadius: "var(--radius-sm)",
+                                            transition: "all 0.15s",
+                                            fontWeight: 600,
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(139, 92, 246, 0.15)";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            (e.currentTarget as HTMLElement).style.background = "rgba(139, 92, 246, 0.1)";
+                                        }}
+                                    >
+                                        {showDetailedMemory ? "🔼 Hide Details" : "🔽 Show Details"}
+                                    </button>
                                 </div>
                             </div>
                         ) : (
@@ -1208,6 +1440,157 @@ export default function PDFRagPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* Detailed Memory Panel */}
+                    {showDetailedMemory && detailedMemoryInfo && (
+                        <div style={{ 
+                            borderTop: "1px solid var(--border)", 
+                            paddingTop: "1rem", 
+                            marginTop: "1rem" 
+                        }}>
+                            <h4 style={{ 
+                                fontSize: "0.85rem", 
+                                fontWeight: 600, 
+                                color: "var(--fg)",
+                                margin: "0 0 0.75rem 0",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem"
+                            }}>
+                                🔍 Detailed Memory Analysis
+                            </h4>
+
+                            {/* System Health */}
+                            <div style={{ 
+                                background: "rgba(0,0,0,0.1)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "var(--radius-sm)",
+                                padding: "0.75rem",
+                                marginBottom: "0.75rem",
+                                fontSize: "0.75rem"
+                            }}>
+                                <div style={{ 
+                                    fontWeight: 600, 
+                                    color: "var(--fg)", 
+                                    marginBottom: "0.5rem",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "0.5rem"
+                                }}>
+                                    ⚡ System Health
+                                </div>
+                                <div style={{ display: "flex", gap: "1rem", fontSize: "0.7rem" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                                        <span style={{ 
+                                            color: detailedMemoryInfo.system_health?.system_status === "healthy" ? "#4ade80" : "#f87171",
+                                            fontWeight: 600 
+                                        }}>
+                                            {detailedMemoryInfo.system_health?.system_status === "healthy" ? "✅" : "❌"}
+                                        </span>
+                                        <span>Status: {detailedMemoryInfo.system_health?.system_status || "unknown"}</span>
+                                    </div>
+                                    <div>
+                                        Quality: {(detailedMemoryInfo.system_health?.average_quality * 100 || 0).toFixed(1)}%
+                                    </div>
+                                    <div>
+                                        Index Size: {detailedMemoryInfo.system_health?.index_size || 0}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Recent Memories */}
+                            {detailedMemoryInfo.recent_memories && detailedMemoryInfo.recent_memories.length > 0 && (
+                                <div style={{ 
+                                    background: "rgba(0,0,0,0.1)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "0.75rem",
+                                    fontSize: "0.75rem"
+                                }}>
+                                    <div style={{ 
+                                        fontWeight: 600, 
+                                        color: "var(--fg)", 
+                                        marginBottom: "0.5rem",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "0.5rem"
+                                    }}>
+                                        📝 Recent Memories ({detailedMemoryInfo.recent_memories.length})
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                                        {detailedMemoryInfo.recent_memories.map((memory: any, index: number) => (
+                                            <div key={index} style={{
+                                                background: "rgba(0,0,0,0.2)",
+                                                border: "1px solid var(--border)",
+                                                borderRadius: "var(--radius-sm)",
+                                                padding: "0.5rem",
+                                                fontSize: "0.7rem"
+                                            }}>
+                                                <div style={{ 
+                                                    display: "flex", 
+                                                    justifyContent: "space-between", 
+                                                    alignItems: "flex-start",
+                                                    marginBottom: "0.25rem"
+                                                }}>
+                                                    <div style={{ 
+                                                        color: "var(--fg)", 
+                                                        fontWeight: 500,
+                                                        flex: 1,
+                                                        marginRight: "0.5rem"
+                                                    }}>
+                                                        {memory.text}
+                                                    </div>
+                                                    <div style={{ 
+                                                        display: "flex", 
+                                                        gap: "0.25rem",
+                                                        flexShrink: 0
+                                                    }}>
+                                                        {/* Importance Badge */}
+                                                        <span style={{
+                                                            background: memory.importance >= 0.8 ? "rgba(74, 222, 128, 0.2)" :
+                                                                       memory.importance >= 0.6 ? "rgba(251, 191, 36, 0.2)" : "rgba(248, 113, 113, 0.2)",
+                                                            color: memory.importance >= 0.8 ? "#4ade80" :
+                                                                   memory.importance >= 0.6 ? "#fbbf24" : "#f87171",
+                                                            padding: "0.1rem 0.3rem",
+                                                            borderRadius: "3px",
+                                                            fontSize: "0.65rem",
+                                                            fontWeight: 600
+                                                        }}>
+                                                            {memory.importance.toFixed(2)}
+                                                        </span>
+                                                        {/* Confidence Badge */}
+                                                        <span style={{
+                                                            background: memory.confidence === "high" ? "rgba(34, 197, 94, 0.2)" :
+                                                                       memory.confidence === "medium" ? "rgba(251, 191, 36, 0.2)" : "rgba(248, 113, 113, 0.2)",
+                                                            color: memory.confidence === "high" ? "#22c55e" :
+                                                                   memory.confidence === "medium" ? "#fbbf24" : "#f87171",
+                                                            padding: "0.1rem 0.3rem",
+                                                            borderRadius: "3px",
+                                                            fontSize: "0.65rem",
+                                                            fontWeight: 600
+                                                        }}>
+                                                            {memory.confidence}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ 
+                                                    display: "flex", 
+                                                    gap: "0.5rem", 
+                                                    color: "var(--muted)",
+                                                    fontSize: "0.65rem"
+                                                }}>
+                                                    <span>Type: {memory.type}</span>
+                                                    <span>Access: {memory.access_count}x</span>
+                                                    <span>Age: {memory.age_days.toFixed(1)}d</span>
+                                                    <span>Source: {memory.source}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1370,11 +1753,163 @@ export default function PDFRagPage() {
                                                         background: "rgba(245, 158, 11, 0.1)",
                                                         padding: "0.25rem 0.5rem",
                                                         borderRadius: "4px",
-                                                        fontWeight: 600
+                                                        fontWeight: 600,
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        gap: "0.5rem"
                                                     }}>
                                                         💾 Memory Used
+                                                        <span style={{
+                                                            fontSize: "0.65rem",
+                                                            color: "#d97706",
+                                                            background: "rgba(217, 119, 6, 0.1)",
+                                                            padding: "0.1rem 0.3rem",
+                                                            borderRadius: "3px",
+                                                            fontWeight: 500
+                                                        }}>
+                                                            High Confidence
+                                                        </span>
+                                                        {msg.memory_context_info && (
+                                                            <span style={{
+                                                                fontSize: "0.65rem",
+                                                                color: "#059669",
+                                                                background: "rgba(5, 150, 105, 0.1)",
+                                                                padding: "0.1rem 0.3rem",
+                                                                borderRadius: "3px",
+                                                                fontWeight: 500
+                                                            }}>
+                                                                {msg.memory_context_info.memories_retrieved} Retrieved
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 )}
+                                            </div>
+                                        )}
+
+                                        {/* Memory Context Information */}
+                                        {msg.memory_context_info && msg.memory_context_info.memories_used.length > 0 && (
+                                            <div style={{
+                                                background: "rgba(245, 158, 11, 0.05)",
+                                                border: "1px solid rgba(245, 158, 11, 0.2)",
+                                                borderRadius: "var(--radius-sm)",
+                                                padding: "0.75rem",
+                                                marginBottom: "0.75rem",
+                                                fontSize: "0.75rem"
+                                            }}>
+                                                <div style={{ 
+                                                    fontWeight: 600, 
+                                                    color: "#f59e0b", 
+                                                    marginBottom: "0.5rem",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "space-between"
+                                                }}>
+                                                    <span>🧠 Memory Context Used</span>
+                                                    <div style={{ display: "flex", gap: "0.5rem", fontSize: "0.65rem" }}>
+                                                        <span style={{
+                                                            background: "rgba(34, 197, 94, 0.1)",
+                                                            color: "#22c55e",
+                                                            padding: "0.1rem 0.3rem",
+                                                            borderRadius: "3px",
+                                                            fontWeight: 600
+                                                        }}>
+                                                            Quality: {msg.memory_context_info.system_stats.quality_score.toFixed(1)}%
+                                                        </span>
+                                                        <span style={{
+                                                            background: "rgba(59, 130, 246, 0.1)",
+                                                            color: "#3b82f6",
+                                                            padding: "0.1rem 0.3rem",
+                                                            borderRadius: "3px",
+                                                            fontWeight: 600
+                                                        }}>
+                                                            Total: {msg.memory_context_info.system_stats.total_memories}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                                                    {msg.memory_context_info.memories_used.map((memory: any, idx: number) => (
+                                                        <div key={idx} style={{
+                                                            background: "rgba(0,0,0,0.1)",
+                                                            border: "1px solid var(--border)",
+                                                            borderRadius: "var(--radius-sm)",
+                                                            padding: "0.5rem",
+                                                            fontSize: "0.7rem"
+                                                        }}>
+                                                            <div style={{ 
+                                                                display: "flex", 
+                                                                justifyContent: "space-between", 
+                                                                alignItems: "flex-start",
+                                                                marginBottom: "0.25rem"
+                                                            }}>
+                                                                <div style={{ 
+                                                                    color: "var(--fg)", 
+                                                                    fontWeight: 500,
+                                                                    flex: 1,
+                                                                    marginRight: "0.5rem"
+                                                                }}>
+                                                                    {memory.text}
+                                                                </div>
+                                                                <div style={{ 
+                                                                    display: "flex", 
+                                                                    gap: "0.25rem",
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    {/* Combined Score Badge */}
+                                                                    <span style={{
+                                                                        background: memory.combined_score >= 0.8 ? "rgba(74, 222, 128, 0.2)" :
+                                                                                   memory.combined_score >= 0.6 ? "rgba(251, 191, 36, 0.2)" : "rgba(248, 113, 113, 0.2)",
+                                                                        color: memory.combined_score >= 0.8 ? "#4ade80" :
+                                                                               memory.combined_score >= 0.6 ? "#fbbf24" : "#f87171",
+                                                                        padding: "0.1rem 0.3rem",
+                                                                        borderRadius: "3px",
+                                                                        fontSize: "0.6rem",
+                                                                        fontWeight: 600
+                                                                    }}>
+                                                                        Score: {memory.combined_score.toFixed(2)}
+                                                                    </span>
+                                                                    {/* Importance Badge */}
+                                                                    <span style={{
+                                                                        background: memory.importance >= 0.8 ? "rgba(74, 222, 128, 0.2)" :
+                                                                                   memory.importance >= 0.6 ? "rgba(251, 191, 36, 0.2)" : "rgba(248, 113, 113, 0.2)",
+                                                                        color: memory.importance >= 0.8 ? "#4ade80" :
+                                                                               memory.importance >= 0.6 ? "#fbbf24" : "#f87171",
+                                                                        padding: "0.1rem 0.3rem",
+                                                                        borderRadius: "3px",
+                                                                        fontSize: "0.6rem",
+                                                                        fontWeight: 600
+                                                                    }}>
+                                                                        Imp: {memory.importance.toFixed(2)}
+                                                                    </span>
+                                                                    {/* Confidence Badge */}
+                                                                    <span style={{
+                                                                        background: memory.confidence === "high" ? "rgba(34, 197, 94, 0.2)" :
+                                                                                   memory.confidence === "medium" ? "rgba(251, 191, 36, 0.2)" : "rgba(248, 113, 113, 0.2)",
+                                                                        color: memory.confidence === "high" ? "#22c55e" :
+                                                                               memory.confidence === "medium" ? "#fbbf24" : "#f87171",
+                                                                        padding: "0.1rem 0.3rem",
+                                                                        borderRadius: "3px",
+                                                                        fontSize: "0.6rem",
+                                                                        fontWeight: 600
+                                                                    }}>
+                                                                        {memory.confidence}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            <div style={{ 
+                                                                display: "flex", 
+                                                                gap: "0.5rem", 
+                                                                color: "var(--muted)",
+                                                                fontSize: "0.6rem"
+                                                            }}>
+                                                                <span>Similarity: {memory.similarity_score.toFixed(2)}</span>
+                                                                <span>Recency: {memory.recency_score.toFixed(2)}</span>
+                                                                <span>Access: {memory.access_count}x</span>
+                                                                <span>Age: {memory.age_days.toFixed(1)}d</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
                                         )}
                                         

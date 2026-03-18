@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 
 # Load environment variables from .env file FIRST
@@ -298,3 +299,53 @@ def apply_memory_decay():
             "success": False,
             "error": str(e)
         }
+
+@app.get("/memory/detailed")
+def get_detailed_memory_info():
+    """Get detailed memory information including individual memory scores"""
+    try:
+        # Get basic stats
+        stats = get_memory_stats()
+        
+        # Get sample memories with scores (top 5 most recent)
+        recent_memories = []
+        if len(agent_memory.memory_store) > 0:
+            # Sort by timestamp (most recent first)
+            sorted_memories = sorted(
+                agent_memory.memory_store, 
+                key=lambda x: x.get("timestamp", 0), 
+                reverse=True
+            )
+            
+            for memory in sorted_memories[:5]:  # Top 5 recent memories
+                memory_info = {
+                    "text": memory["text"][:100] + "..." if len(memory["text"]) > 100 else memory["text"],
+                    "importance": memory.get("importance", 0.5),
+                    "type": memory.get("type", "unknown"),
+                    "access_count": memory.get("access_count", 0),
+                    "confidence": memory.get("metadata", {}).get("confidence", "medium"),
+                    "source": memory.get("metadata", {}).get("source", "unknown"),
+                    "age_days": (time.time() - memory.get("timestamp", time.time())) / (24 * 60 * 60)
+                }
+                recent_memories.append(memory_info)
+        
+        return {
+            "success": True,
+            "memory_stats": stats,
+            "recent_memories": recent_memories,
+            "system_health": {
+                "total_memories": len(agent_memory.memory_store),
+                "index_size": agent_memory.memory_index.ntotal if agent_memory.memory_index else 0,
+                "average_quality": stats.get("average_importance", 0),
+                "system_status": "healthy" if stats.get("scoring_system") == "advanced_ranking_enabled" else "degraded"
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

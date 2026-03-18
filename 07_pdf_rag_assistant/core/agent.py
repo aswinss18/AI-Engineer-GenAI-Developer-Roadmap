@@ -56,6 +56,11 @@ class AIAgent:
 
 REACT PATTERN - Think step by step and use multiple tools when needed:
 
+CRITICAL: When users ask about specific people, names, or entities:
+1. FIRST: Search documents to find information about that person/entity
+2. THEN: Provide comprehensive information from the documents
+3. FINALLY: If no information found, explain that the person is not in the uploaded documents
+
 CRITICAL: When users ask about temperature, weather, or "how hot" someone feels:
 1. FIRST: Search documents to find their location
 2. THEN: Use get_weather tool to get current temperature for that location
@@ -66,7 +71,13 @@ CRITICAL: When users ask about calculations involving document data:
 2. THEN: Use calculation tools to compute the result
 3. FINALLY: Explain the calculation
 
+CRITICAL: When users ask questions like "who is X" or "tell me about X":
+1. ALWAYS search documents first using search_documents tool
+2. Look for any information about that person in the uploaded PDFs
+3. Provide detailed information if found, or explain if not found
+
 For complex queries, break them down:
+- "Who is Aswin?" → search_documents (find Aswin information)
 - "How hot does X feel?" → search_documents (find location) → get_weather (get temperature)
 - "Calculate Y% of salary" → search_documents (find salary) → calculate_percentage (compute result)
 - "Weather where X lives" → search_documents (find location) → get_weather (get temperature)
@@ -74,6 +85,8 @@ For complex queries, break them down:
 MEMORY: Use your memory to provide personalized responses. Remember user preferences, previous conversations, and important facts.
 
 IMPORTANT: Always use tools in sequence when the query requires multiple steps. Don't stop after just one tool if more information is needed.
+
+DOCUMENT SEARCH PRIORITY: When in doubt about whether to search documents, ALWAYS search first. Users have uploaded documents for a reason - they expect you to use them.
 
 Available tools: search_documents, list_available_documents, calculate_percentage, calculate_salary_increment, get_weather, convert_currency
 
@@ -181,6 +194,38 @@ Be concise, accurate, and always use the appropriate tools to get complete infor
             # Extract and store important facts from the conversation
             extract_and_store_facts(query, final_answer)
             
+            # Get memory context information for UI display
+            memory_context_info = None
+            if memory_context:
+                try:
+                    # Get recent memories used for this query
+                    recent_memories = agent_memory.retrieve_memory(query, k=3)
+                    memory_stats = agent_memory.get_memory_stats()
+                    
+                    memory_context_info = {
+                        "memories_retrieved": len(recent_memories),
+                        "memories_used": [
+                            {
+                                "text": mem["text"][:80] + "..." if len(mem["text"]) > 80 else mem["text"],
+                                "importance": mem.get("importance", 0.5),
+                                "confidence": mem.get("metadata", {}).get("confidence", "medium"),
+                                "combined_score": mem.get("combined_score", 0.0),
+                                "similarity_score": mem.get("similarity_score", 0.0),
+                                "recency_score": mem.get("recency_score", 0.0),
+                                "access_count": mem.get("access_count", 0),
+                                "age_days": mem.get("age_days", 0)
+                            }
+                            for mem in recent_memories[:3]  # Top 3 memories
+                        ],
+                        "system_stats": {
+                            "total_memories": memory_stats.get("stored_memories", 0),
+                            "average_importance": memory_stats.get("average_importance", 0),
+                            "quality_score": memory_stats.get("average_importance", 0) * 100 if memory_stats.get("average_importance") else 0
+                        }
+                    }
+                except Exception as e:
+                    logger.error(f"Error getting memory context info: {e}")
+            
             return {
                 "success": True,
                 "query": query,
@@ -190,7 +235,8 @@ Be concise, accurate, and always use the appropriate tools to get complete infor
                 "reasoning_steps": reasoning_steps,
                 "has_tool_calls": bool(tool_results),
                 "react_pattern": True,
-                "memory_used": bool(memory_context)
+                "memory_used": bool(memory_context),
+                "memory_context_info": memory_context_info
             }
             
         except Exception as e:
@@ -240,7 +286,9 @@ Be concise, accurate, and always use the appropriate tools to get complete infor
                     "tool_calls": result["tool_calls"],
                     "has_tool_calls": result["has_tool_calls"],
                     "reasoning_steps": result.get("reasoning_steps", []),
-                    "react_pattern": result.get("react_pattern", True)
+                    "react_pattern": result.get("react_pattern", True),
+                    "memory_used": result.get("memory_used", False),
+                    "memory_context_info": result.get("memory_context_info")
                 }
                 
                 # Then stream the answer in chunks
