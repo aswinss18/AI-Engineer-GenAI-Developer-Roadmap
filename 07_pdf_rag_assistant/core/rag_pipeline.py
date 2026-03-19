@@ -16,6 +16,7 @@ from core.multi_document_context import (
     analyze_document_distribution,
     extract_document_insights
 )
+from core.prompt_templates import build_optimized_prompt, optimize_context
 from openai import OpenAI
 
 # Set up logging
@@ -110,55 +111,55 @@ def process_pdf(file_path):
 
 def ask_question(question):
     """
-    Multi-Document Hybrid RAG pipeline with cross-document analysis
-    Query → Hybrid Search → Group by Document → Rerank → Multi-Doc Context → LLM
+    Optimized Multi-Document Hybrid RAG pipeline with token optimization
+    Query → Hybrid Search → Optimize Context → Rerank → Optimized Prompt → LLM
     """
-    logger.info(f"Processing question with multi-document hybrid pipeline: {question}")
+    logger.info(f"Processing question with optimized hybrid pipeline: {question}")
     
-    # Step 1: Hybrid search (vector + keyword)
+    # Step 1: Hybrid search with reduced initial retrieval for optimization
     initial_chunks = hybrid_search(
         query=question,
-        vector_k=10,     # Increased for multi-document coverage
-        keyword_k=10,    # Increased for multi-document coverage
+        vector_k=8,      # Reduced from 10 for token optimization
+        keyword_k=8,     # Reduced from 10 for token optimization
         vector_weight=0.6,
         keyword_weight=0.4
     )
     
     hybrid_stats = get_hybrid_search_stats(initial_chunks)
-    logger.info(f"Hybrid search stats: {hybrid_stats}")
+    logger.info(f"Optimized hybrid search stats: {hybrid_stats}")
     
     if not initial_chunks:
         return "I don't have any documents to search through. Please upload a PDF first using the /upload endpoint."
     
-    # Step 2: Group chunks by document
-    grouped_chunks = group_chunks_by_document(initial_chunks)
-    document_analysis = analyze_document_distribution(grouped_chunks)
-    
-    # Step 3: Get query embedding for reranking
+    # Step 2: Get query embedding for reranking
     query_embedding = get_embedding(question)
     
-    # Step 4: Rerank chunks using cosine similarity
-    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=8)
-    logger.info(f"Reranked to top {len(reranked_chunks)} chunks")
+    # Step 3: Rerank chunks using cosine similarity (reduced for optimization)
+    reranked_chunks = rerank_chunks(query_embedding, initial_chunks, top_k=5)  # Reduced from 8
+    logger.info(f"Reranked to top {len(reranked_chunks)} chunks for optimization")
     
-    # Step 5: Group reranked chunks by document
-    reranked_grouped = group_chunks_by_document(reranked_chunks)
+    # Step 4: Optimize context selection
+    optimized_context = optimize_context(reranked_chunks, question)
+    logger.info(f"Context optimized: {len(optimized_context)} characters")
     
-    # Step 6: Build multi-document context
-    context, context_metadata = build_multi_document_context(reranked_grouped, max_context_length=3000)
+    # Step 5: Build optimized prompt
+    optimized_prompt = build_optimized_prompt(
+        query=question,
+        context=optimized_context
+    )
     
-    # Step 7: Create specialized prompt
-    prompt = create_comparison_prompt(context, question, context_metadata)
-    
+    # Step 6: Generate response with optimized settings
     client = get_client()
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "user", "content": prompt}
-        ]
+            {"role": "user", "content": optimized_prompt}
+        ],
+        temperature=0.1,  # Lower temperature for more focused responses
+        max_tokens=1000   # Limit response length for optimization
     )
     
-    logger.info(f"Multi-document pipeline complete. Documents: {document_analysis['document_count']}, Multi-doc: {document_analysis['multi_document']}")
+    logger.info(f"Optimized pipeline complete. Chunks processed: {len(reranked_chunks)}")
     
     return response.choices[0].message.content
 
