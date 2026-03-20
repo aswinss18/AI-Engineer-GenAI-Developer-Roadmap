@@ -15,32 +15,39 @@ WORKDIR /app
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies using uv as root
+RUN uv sync --frozen --no-dev
+
 # Create a non-privileged user that the app will run under.
 ARG UID=10001
 RUN adduser \
     --disabled-password \
     --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
-    --no-create-home \
+    --home "/home/appuser" \
+    --shell "/bin/bash" \
     --uid "${UID}" \
     appuser
 
-# Copy dependency files
-COPY pyproject.toml uv.lock ./
+# Create and set permissions for cache directory
+RUN mkdir -p /home/appuser/.cache/uv && \
+    chown -R appuser:appuser /home/appuser
 
-# Install dependencies using uv
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+# Copy the source code into the container.
+COPY . .
+RUN chown -R appuser:appuser /app
 
 # Switch to the non-privileged user to run the application.
 USER appuser
 
-# Copy the source code into the container.
-COPY . .
+# Set environment variables
+ENV UV_CACHE_DIR=/home/appuser/.cache/uv
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Expose the port that the application listens on.
 EXPOSE 8000
 
-# Run the application using uv
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application directly with python instead of uv run
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
