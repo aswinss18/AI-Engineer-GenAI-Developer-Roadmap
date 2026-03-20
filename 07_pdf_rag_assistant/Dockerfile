@@ -31,6 +31,9 @@ RUN adduser \
     --uid "${UID}" \
     appuser
 
+# Install gunicorn for production server
+RUN uv add gunicorn
+
 # Create and set permissions for cache directory
 RUN mkdir -p /home/appuser/.cache/uv && \
     chown -R appuser:appuser /home/appuser
@@ -49,5 +52,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Expose the port that the application listens on.
 EXPOSE 8000
 
-# Run the application directly with python instead of uv run
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application with Gunicorn and Uvicorn workers for optimal performance
+CMD ["python", "-m", "gunicorn", "main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-"]
