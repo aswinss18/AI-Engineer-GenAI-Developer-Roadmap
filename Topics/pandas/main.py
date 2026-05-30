@@ -9,9 +9,9 @@ data = {
 
 df2 = pd.read_csv("timesheet.csv",skiprows=1)
 
-df=pd.read_json("posts.json",skiprows=1)
+df=pd.read_json("posts.json")
 
-df3 = pd.read_excel("food.xlsx")
+df3 = pd.read_excel("food.xlsx",header=3,fillna=0)
 # result=df
 
 # filteredData = df2[df2["Available"] > 100]
@@ -19,4 +19,4 @@ df3 = pd.read_excel("food.xlsx")
 # print(df1,"Framed Data")
 
 
-print( df)
+print( df3)
