@@ -7,9 +7,11 @@ data = {
 
 # df1 = pd.DataFrame(data)
 
-# df2 = pd.read_csv("timesheet.csv")
+df2 = pd.read_csv("timesheet.csv",skiprows=1)
 
-df=pd.read_json("posts.json")
+df=pd.read_json("posts.json",skiprows=1)
+
+df3 = pd.read_excel("food.xlsx")
 # result=df
 
 # filteredData = df2[df2["Available"] > 100]
@@ -17,4 +19,4 @@ df=pd.read_json("posts.json")
 # print(df1,"Framed Data")
 
 
-print("JSON Data Info:", df['title'].str.len().min()) 
+print( df)
